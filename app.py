@@ -1,17 +1,31 @@
+import os
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-import os
 from datetime import datetime
 from decimal import Decimal
 import csv
 import io
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here-change-in-production'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+
+# ==================== KONFIGURASI DATABASE UNTUK RENDER ====================
+# Fix untuk Render: Ambil DATABASE_URL dari environment variable
+# Jika pakai PostgreSQL di Render, URL dimulai dengan postgres:// harus diubah jadi postgresql://
+
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Konfigurasi database untuk Render
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
+
+# Fix untuk Render: postgres:// -> postgresql://
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# ==========================================================================
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -236,13 +250,13 @@ class FinancialStatement:
         
         # Harga Pokok Penjualan (HPP)
         hpp_accounts = [item for item in trial_balance.accounts_data 
-                       if item['account'].account_code in ['5101', '5901']]  # Pembelian dan HPP
+                       if item['account'].account_code in ['5101', '5901']]
         total_hpp = sum(item['debit'] - item['credit'] for item in hpp_accounts)
         
         # Laba Kotor (Gross Profit)
         gross_profit = total_revenue - total_hpp
         
-        # Beban Operasional - DETAILED
+        # Beban Operasional
         operating_expenses_detailed = {
             'beban_transportasi': 0,
             'beban_tenaga_kerja': 0,
@@ -253,7 +267,6 @@ class FinancialStatement:
             'total': 0
         }
         
-        # Get detailed operating expenses
         expense_accounts = [item for item in trial_balance.accounts_data 
                           if item['account'].account_type == 'Beban' 
                           and item['account'].account_code not in ['5101', '5901']]
@@ -262,20 +275,19 @@ class FinancialStatement:
             amount = item['debit'] - item['credit']
             account_code = item['account'].account_code
             
-            if account_code == '5201':  # Beban Transportasi
+            if account_code == '5201':
                 operating_expenses_detailed['beban_transportasi'] = amount
-            elif account_code == '5202':  # Beban Tenaga Kerja
+            elif account_code == '5202':
                 operating_expenses_detailed['beban_tenaga_kerja'] = amount
-            elif account_code == '5203':  # Beban Sewa
+            elif account_code == '5203':
                 operating_expenses_detailed['beban_sewa'] = amount
-            elif account_code == '5204':  # Beban Perbaikan
+            elif account_code == '5204':
                 operating_expenses_detailed['beban_perbaikan'] = amount
-            elif account_code == '5301':  # Beban Penyusutan
+            elif account_code == '5301':
                 operating_expenses_detailed['beban_penyusutan'] = amount
             else:
                 operating_expenses_detailed['beban_lain_lain'] += amount
         
-        # Calculate total operating expenses
         operating_expenses_detailed['total'] = sum([
             operating_expenses_detailed['beban_transportasi'],
             operating_expenses_detailed['beban_tenaga_kerja'],
@@ -285,7 +297,6 @@ class FinancialStatement:
             operating_expenses_detailed['beban_lain_lain']
         ])
         
-        # Laba Bersih Sebelum Pajak
         net_income_before_tax = gross_profit - operating_expenses_detailed['total']
         
         self.income_statement = {
@@ -293,7 +304,7 @@ class FinancialStatement:
             'hpp': total_hpp,
             'gross_profit': gross_profit,
             'operating_expenses': operating_expenses_detailed['total'],
-            'operating_expenses_detailed': operating_expenses_detailed,
+            'operating_expenses_demicalled': operating_expenses_detailed,
             'net_income': net_income_before_tax
         }
         
@@ -301,13 +312,11 @@ class FinancialStatement:
     
     def calculate_balance_sheet(self, trial_balance, net_income):
         """Calculate Balance Sheet according to accounting principles"""
-        # Aset - DETAILED
         asset_accounts = trial_balance.get_accounts_by_type('Aset')
         asset_contra_accounts = trial_balance.get_accounts_by_type('Aset Kontra')
         
         total_assets = sum(item['debit'] - item['credit'] for item in asset_accounts)
         
-        # Get detailed assets
         kas_bank = 0
         persediaan = 0
         peralatan = 0
@@ -317,52 +326,46 @@ class FinancialStatement:
             amount = item['debit'] - item['credit']
             account_code = item['account'].account_code
             
-            if account_code == '1101':  # Kas
+            if account_code == '1101':
                 kas_bank = amount
-            elif account_code == '1201':  # Persediaan
+            elif account_code == '1201':
                 persediaan = amount
-            elif account_code == '1301':  # Peralatan
+            elif account_code == '1301':
                 peralatan = amount
         
-        # Get akumulasi penyusutan from contra asset accounts
         for item in asset_contra_accounts:
-            amount = item['credit'] - item['debit']  # Contra assets have credit balance
+            amount = item['credit'] - item['debit']
             account_code = item['account'].account_code
             
-            if account_code == '1311':  # Akumulasi Penyusutan
+            if account_code == '1311':
                 akumulasi_penyusutan = amount
         
-        # Kewajiban - DETAILED
         liability_accounts = trial_balance.get_accounts_by_type('Liabilitas')
         total_liabilities = sum(item['credit'] - item['debit'] for item in liability_accounts)
         
-        # Get detailed liabilities
         utang_usaha = 0
         utang_lainnya = 0
         
         for item in liability_accounts:
             amount = item['credit'] - item['debit']
-            # For simplicity, split liabilities
             if utang_usaha == 0:
                 utang_usaha = amount * 0.6
                 utang_lainnya = amount * 0.4
         
-        # Ekuitas (Modal Awal + Laba Bersih - Prive)
         equity_accounts = trial_balance.get_accounts_by_type('Ekuitas')
         initial_equity = 0
         prive = 0
         
         for item in equity_accounts:
-            if item['account'].account_code == '3101':  # Modal Disetor
+            if item['account'].account_code == '3101':
                 initial_equity = item['credit'] - item['debit']
-            elif item['account'].account_code == '3102':  # Prive
+            elif item['account'].account_code == '3102':
                 prive = item['debit'] - item['credit']
         
-        # Modal Akhir = Modal Awal + Laba Bersih - Prive
         ending_equity = initial_equity + net_income - prive
         
         self.balance_sheet = {
-            'assets': total_assets - akumulasi_penyusutan,  # Subtract accumulated depreciation
+            'assets': total_assets - akumulasi_penyusutan,
             'liabilities': total_liabilities,
             'equity': ending_equity,
             'initial_equity': initial_equity,
@@ -381,7 +384,7 @@ class FinancialStatement:
         
         return self.balance_sheet
 
-# CLASS UNTUK CLOSING PROCESSOR YANG DIPERBAIKI
+# CLASS UNTUK CLOSING PROCESSOR
 class ClosingProcessor:
     def __init__(self, user_id, period=None):
         self.user_id = user_id
@@ -391,14 +394,12 @@ class ClosingProcessor:
         self.reference_counter = 1
         
     def _generate_unique_reference(self, entry_type):
-        """Generate unique reference for closing entries"""
         base_ref = f"CLS-{entry_type}-{datetime.now().strftime('%Y%m%d')}"
         unique_ref = f"{base_ref}-{self.reference_counter:03d}"
         self.reference_counter += 1
         return unique_ref
         
     def get_adjusted_trial_balance_data(self):
-        """Get account balances from adjusted trial balance"""
         ledger_processor = LedgerProcessor(self.user_id)
         accounts = Account.query.filter_by(is_active=True).all()
         
@@ -437,32 +438,23 @@ class ClosingProcessor:
         return trial_balance_data
     
     def get_income_statement_data(self):
-        """Get net income from income statement calculation"""
         trial_balance_data = self.get_adjusted_trial_balance_data()
         
-        # Buat trial balance object untuk financial statement
         trial_balance_obj = TrialBalance(include_adjusting=True)
         for item in trial_balance_data:
             trial_balance_obj.add_account_balance(item['account'], item['debit'], item['credit'])
         
-        # Hitung income statement
         financial_stmt = FinancialStatement()
         income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
         
         return income_stmt['net_income']
     
     def generate_closing_entries(self):
-        """Generate closing entries according to accounting principles"""
-        # Clear existing entries
         self.closing_entries = []
         
-        # Get data from adjusted trial balance
         trial_balance_data = self.get_adjusted_trial_balance_data()
-        
-        # Get net income from income statement
         self.net_income = self.get_income_statement_data()
         
-        # 1. Close Sales & Other Revenue accounts (Debit Revenue, Credit Ikhtisar Laba Rugi)
         revenue_accounts = [item for item in trial_balance_data 
                           if item['account'].account_type == 'Pendapatan' and item['credit'] > 0]
         
@@ -481,7 +473,6 @@ class ClosingProcessor:
             )
             self.closing_entries.append(entry)
         
-        # 2. Close Expense accounts (Debit Ikhtisar Laba Rugi, Credit Expense)
         expense_accounts = [item for item in trial_balance_data 
                           if item['account'].account_type == 'Beban' and item['debit'] > 0]
         
@@ -500,7 +491,6 @@ class ClosingProcessor:
             )
             self.closing_entries.append(entry)
         
-        # 3. Close HPP (Debit Ikhtisar Laba Rugi, Credit HPP)
         hpp_accounts = [item for item in trial_balance_data 
                        if item['account'].account_code in ['5101', '5901'] and item['debit'] > 0]
         
@@ -519,9 +509,8 @@ class ClosingProcessor:
             )
             self.closing_entries.append(entry)
         
-        # 4. Close Income Summary to Capital (Modal Akhir)
         if self.net_income != 0:
-            if self.net_income > 0:  # Laba
+            if self.net_income > 0:
                 entry = ClosingEntry(
                     date=datetime.now(),
                     reference=self._generate_unique_reference('INCOME'),
@@ -534,7 +523,7 @@ class ClosingProcessor:
                     entry_type='Laba Bersih',
                     created_by=self.user_id
                 )
-            else:  # Rugi
+            else:
                 entry = ClosingEntry(
                     date=datetime.now(),
                     reference=self._generate_unique_reference('LOSS'),
@@ -549,7 +538,6 @@ class ClosingProcessor:
                 )
             self.closing_entries.append(entry)
         
-        # 5. Close Prive (Debit Modal, Credit Prive)
         prive_accounts = [item for item in trial_balance_data 
                          if item['account'].account_code == '3102' and item['debit'] > 0]
         
@@ -571,12 +559,9 @@ class ClosingProcessor:
         return self.closing_entries
     
     def save_closing_entries(self):
-        """Save generated closing entries to database"""
         try:
-            # Delete existing closing entries for this user
             ClosingEntry.query.filter_by(created_by=self.user_id).delete()
             
-            # Save new closing entries
             for entry in self.closing_entries:
                 db.session.add(entry)
             
@@ -586,7 +571,7 @@ class ClosingProcessor:
             db.session.rollback()
             return False, f"Gagal menyimpan closing entries: {str(e)}"
 
-# CLASS UNTUK POST-CLOSING TRIAL BALANCE YANG DIPERBAIKI
+# CLASS UNTUK POST-CLOSING TRIAL BALANCE
 class PostClosingTrialBalance:
     def __init__(self, period=None):
         self.period = period or datetime.now().strftime('%B %Y')
@@ -595,7 +580,6 @@ class PostClosingTrialBalance:
         self.total_credit = 0
         
     def add_real_account_balance(self, account, debit, credit):
-        """Add only real accounts (Assets, Liabilities, Equity)"""
         if account.account_type in ['Aset', 'Liabilitas', 'Ekuitas']:
             self.real_accounts_data.append({
                 'account': account,
@@ -618,12 +602,18 @@ class PostClosingTrialBalance:
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Routes
+# ==================== ROUTES UTAMA ====================
 @app.route('/')
 def index():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
-    return render_template('index.html')
+    
+    background_image = url_for('static', filename='staticimages/background.jpeg')
+    logo_image = url_for('static', filename='staticimages/LOGO 1 (1).png')
+    
+    return render_template('index.html', 
+                         background_image=background_image,
+                         logo_image=logo_image)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -687,9 +677,7 @@ def register():
 @app.route('/api/dashboard/financial_data')
 @login_required
 def dashboard_financial_data():
-    """API untuk mengambil data financial statements untuk dashboard"""
     try:
-        # Buat Adjusted Trial Balance untuk financial statements
         trial_balance_obj = TrialBalance(include_adjusting=True)
         
         ledger_processor = LedgerProcessor(current_user.id)
@@ -710,7 +698,6 @@ def dashboard_financial_data():
                 else:
                     trial_balance_obj.add_account_balance(account, abs(balance), 0)
         
-        # Hitung Financial Statements
         financial_stmt = FinancialStatement()
         income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
         balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
@@ -737,7 +724,6 @@ def dashboard():
     
     recent_transactions = Transaction.query.filter_by(created_by=current_user.id).order_by(Transaction.created_at.desc()).limit(5).all()
     
-    # Coba ambil data financial statements untuk dashboard
     income_statement = None
     balance_sheet = None
     net_income = 0
@@ -769,7 +755,8 @@ def dashboard():
         
     except Exception as e:
         print(f"Error calculating financial data: {e}")
-        # Tetap lanjut dengan data default
+    
+    logo_image = url_for('static', filename='staticimages/LOGO 1 (1).png')
     
     return render_template('dashboard.html', 
                          total_accounts=total_accounts,
@@ -778,7 +765,8 @@ def dashboard():
                          recent_transactions=recent_transactions,
                          income_statement=income_statement,
                          balance_sheet=balance_sheet,
-                         net_income=net_income)
+                         net_income=net_income,
+                         logo_image=logo_image)
 
 # CHART OF ACCOUNTS ROUTES
 @app.route('/chart_of_accounts')
@@ -891,24 +879,15 @@ def initialize_default_accounts():
             return jsonify({'success': False, 'message': 'Akun sudah ada di sistem'})
         
         specific_accounts = [
-            # Aset
             {'code': '1101', 'name': 'Kas', 'type': 'Aset', 'category': 'Kas & Bank', 'normal_balance': 'Debit'},
             {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
             {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
-            
-            # Aset Kontra
             {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
-            
-            # Ekuitas
             {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
             {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
             {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
-            
-            # Pendapatan
             {'code': '4101', 'name': 'Penjualan', 'type': 'Pendapatan', 'category': 'Pendapatan Usaha', 'normal_balance': 'Kredit'},
             {'code': '4102', 'name': 'Penjualan Lain-lain', 'type': 'Pendapatan', 'category': 'Pendapatan Lain', 'normal_balance': 'Kredit'},
-            
-            # Beban
             {'code': '5101', 'name': 'Pembelian', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
             {'code': '5901', 'name': 'HPP', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
             {'code': '5201', 'name': 'Beban Transportasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
@@ -1133,7 +1112,7 @@ def general_ledger():
                          selected_account=selected_account,
                          ledger_data=ledger_data)
 
-# TRIAL BALANCE ROUTES - HANYA REGULAR ENTRIES
+# TRIAL BALANCE ROUTES
 @app.route('/trial_balance')
 @login_required
 def trial_balance():
@@ -1166,7 +1145,7 @@ def trial_balance():
                          period=period,
                          printed_date=printed_date)
 
-# ADJUSTED TRIAL BALANCE ROUTES - REGULAR + ADJUSTING ENTRIES
+# ADJUSTED TRIAL BALANCE ROUTES
 @app.route('/adjusted_trial_balance')
 @login_required
 def adjusted_trial_balance():
@@ -1322,11 +1301,10 @@ def delete_adjusting_entry(id):
     
     return redirect(url_for('adjusting_entries'))
 
-# FINANCIAL STATEMENTS ROUTES - DATA DARI ADJUSTED TRIAL BALANCE
+# FINANCIAL STATEMENTS ROUTES
 @app.route('/financial_statements')
 @login_required
 def financial_statements():
-    # Buat Adjusted Trial Balance untuk financial statements
     trial_balance_obj = TrialBalance(include_adjusting=True)
     
     ledger_processor = LedgerProcessor(current_user.id)
@@ -1347,7 +1325,6 @@ def financial_statements():
             else:
                 trial_balance_obj.add_account_balance(account, abs(balance), 0)
     
-    # Hitung Financial Statements
     financial_stmt = FinancialStatement()
     income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
     balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
@@ -1358,19 +1335,13 @@ def financial_statements():
                          period=financial_stmt.period,
                          current_date=datetime.now())
 
-# CLOSING ENTRIES ROUTES - YANG SUDAH DIPERBAIKI DAN OTOMATIS
+# CLOSING ENTRIES ROUTES
 @app.route('/closing_entries')
 @login_required
 def closing_entries():
-    # OTOMATIS GENERATE CLOSING ENTRIES SETIAP KALI PAGE DIAKSES
     try:
-        # Initialize closing processor
         closing_processor = ClosingProcessor(current_user.id)
-        
-        # Generate closing entries
         closing_entries = closing_processor.generate_closing_entries()
-        
-        # Save to database
         success, message = closing_processor.save_closing_entries()
         
         if not success:
@@ -1379,20 +1350,16 @@ def closing_entries():
     except Exception as e:
         flash(f'Error dalam generating closing entries: {str(e)}', 'error')
     
-    # Get existing closing entries from database
     existing_entries = ClosingEntry.query.filter_by(created_by=current_user.id)\
         .order_by(ClosingEntry.date.desc()).all()
     
-    # Calculate totals
     total_debit = sum(entry.amount for entry in existing_entries)
-    total_credit = total_debit  # Closing entries should always balance
+    total_credit = total_debit
     
-    # Check nominal accounts closure status
     nominal_accounts = Account.query.filter(Account.account_type.in_(['Pendapatan', 'Beban'])).all()
     closed_nominal_count = 0
     
     for account in nominal_accounts:
-        # Check if this account has been closed (appears in closing entries)
         if any(entry.account_debit_code == account.account_code or 
                entry.account_credit_code == account.account_code 
                for entry in existing_entries):
@@ -1413,13 +1380,8 @@ def closing_entries():
 @login_required
 def generate_closing_entries():
     try:
-        # Initialize closing processor
         closing_processor = ClosingProcessor(current_user.id)
-        
-        # Generate closing entries
         closing_entries = closing_processor.generate_closing_entries()
-        
-        # Save to database
         success, message = closing_processor.save_closing_entries()
         
         if success:
@@ -1440,15 +1402,13 @@ def generate_closing_entries():
             'message': f'Gagal generate closing entries: {str(e)}'
         }), 500
 
-# POST-CLOSING TRIAL BALANCE ROUTES - YANG SUDAH DIPERBAIKI
+# POST-CLOSING TRIAL BALANCE ROUTES
 @app.route('/post_closing_trial_balance')
 @login_required
 def post_closing_trial_balance():
-    # 1. Ambil saldo dari Adjusted Trial Balance
     ledger_processor = LedgerProcessor(current_user.id)
     
-    # 2. Ambil akun-akun yang diperlukan
-    accounts_needed = ['1101', '1201', '1301', '1311']  # Kas, Persediaan, Peralatan, Akumulasi Penyusutan
+    accounts_needed = ['1101', '1201', '1301', '1311']
     
     trial_balance_data = []
     total_debit = 0
@@ -1490,8 +1450,6 @@ def post_closing_trial_balance():
                     })
                     total_debit += abs(balance)
     
-    # 3. Hitung Modal Akhir dari Financial Statements
-    # Buat trial balance untuk financial statements
     trial_balance_obj = TrialBalance(include_adjusting=True)
     
     all_accounts = Account.query.filter_by(is_active=True).all()
@@ -1509,12 +1467,10 @@ def post_closing_trial_balance():
             else:
                 trial_balance_obj.add_account_balance(account, abs(balance), 0)
     
-    # Hitung income statement dan balance sheet
     financial_stmt = FinancialStatement()
     income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
     balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
     
-    # 4. Tambahkan Modal Akhir
     modal_account = Account.query.filter_by(account_code='3101').first()
     if modal_account:
         modal_akhir = balance_sheet['equity']
@@ -1556,24 +1512,15 @@ def init_db():
         
         if Account.query.count() == 0:
             default_accounts = [
-                # Aset
                 {'code': '1101', 'name': 'Kas', 'type': 'Aset', 'category': 'Kas & Bank', 'normal_balance': 'Debit'},
                 {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
                 {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
-                
-                # Aset Kontra
                 {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
-                
-                # Ekuitas
                 {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
                 {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
                 {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
-                
-                # Pendapatan
                 {'code': '4101', 'name': 'Penjualan', 'type': 'Pendapatan', 'category': 'Pendapatan Usaha', 'normal_balance': 'Kredit'},
                 {'code': '4102', 'name': 'Penjualan Lain-lain', 'type': 'Pendapatan', 'category': 'Pendapatan Lain', 'normal_balance': 'Kredit'},
-                
-                # Beban
                 {'code': '5101', 'name': 'Pembelian', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
                 {'code': '5901', 'name': 'HPP', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
                 {'code': '5201', 'name': 'Beban Transportasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
@@ -1598,4 +1545,15 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True)
+    
+    # Untuk Render, pakai PORT dari environment variable
+    port = int(os.environ.get('PORT', 10000))
+    
+    # Debug mode hanya untuk local, di Render harus False
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    
+    app.run(
+        host='0.0.0.0',  # Wajib untuk Render
+        port=port,
+        debug=debug_mode
+    )
