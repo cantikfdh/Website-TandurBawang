@@ -1,21 +1,20 @@
 {% extends "base.html" %}
 
 {% block public_content %}
-<!-- Background Full Screen -->
-<div class="background-fullscreen" id="background-fullscreen"></div>
+<!-- Background dengan gambar dari static -->
+<div class="background-fullscreen" id="background-fullscreen" 
+     style="background-image: url('{{ url_for('static', filename='staticimages/background.jpeg') }}');
+            background-size: cover;
+            background-position: center;"></div>
 
 <!-- Konten utama -->
 <div class="min-h-screen flex items-center justify-center p-4 relative z-10">
     <div class="max-w-lg w-full flex flex-col items-center">
         <!-- Logo di atas kotak -->
         <div class="logo-display mb-8 text-center">
-            {% if session.get('uploaded_logo') %}
-                <img src="{{ session.uploaded_logo }}" alt="Logo Tandur Bawang" class="w-48 h-48 rounded-full object-cover mx-auto border-4 border-white shadow-2xl">
-            {% else %}
-                <div class="w-48 h-48 bg-white rounded-full flex items-center justify-center text-purple-600 text-5xl font-bold mx-auto border-4 border-white shadow-2xl">
-                    TB
-                </div>
-            {% endif %}
+            <img src="{{ url_for('static', filename='staticimages/LOGO 1 (1).png') }}" 
+                 alt="Logo Tandur Bawang" 
+                 class="w-48 h-48 rounded-full object-cover mx-auto border-4 border-white shadow-2xl">
         </div>
 
         <!-- Kotak utama dengan border putih -->
@@ -53,11 +52,10 @@
 
 <!-- Tombol Explorer Background di pojok kiri bawah -->
 <div class="fixed bottom-4 left-4 z-50">
-    <label for="background-upload" class="cursor-pointer inline-flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-xs retro-btn-small">
+    <button id="toggle-background" class="inline-flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-xs retro-btn-small">
         <i class="fas fa-image mr-1"></i>
-        Ganti Background
-    </label>
-    <input type="file" id="background-upload" class="hidden" accept="image/*">
+        <span id="bg-text">Default Background</span>
+    </button>
 </div>
 
 <style>
@@ -68,6 +66,14 @@
         left: 0;
         width: 100%;
         height: 100%;
+        background-size: cover !important;
+        background-position: center !important;
+        z-index: 1;
+        transition: background-image 0.5s ease;
+    }
+
+    /* Background gradient default */
+    .background-gradient {
         background: linear-gradient(135deg, 
             #1e1b4b 0%, 
             #312e81 25%, 
@@ -76,14 +82,6 @@
             #818cf8 100%);
         background-size: 400% 400%;
         animation: galaxyMove 20s ease infinite;
-        z-index: 1;
-        transition: background-image 0.5s ease;
-    }
-
-    /* Jika ada custom background */
-    .background-fullscreen.has-custom-bg {
-        background: var(--custom-bg-image) center/cover no-repeat !important;
-        animation: none;
     }
 
     /* Kotak dengan border putih */
@@ -237,45 +235,31 @@
 </style>
 
 <script>
-    // Script untuk upload background
     document.addEventListener('DOMContentLoaded', function() {
-        const backgroundUpload = document.getElementById('background-upload');
         const backgroundFullscreen = document.getElementById('background-fullscreen');
-
-        // Cek jika ada background yang sudah diupload
-        const savedBackground = localStorage.getItem('tandurBawangBackground');
-        if (savedBackground) {
-            applyBackground(savedBackground);
-        }
-
-        // Handle upload background
-        backgroundUpload.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const backgroundUrl = e.target.result;
-                    applyBackground(backgroundUrl);
-                    localStorage.setItem('tandurBawangBackground', backgroundUrl);
-                };
-                reader.readAsDataURL(file);
+        const toggleBtn = document.getElementById('toggle-background');
+        const bgText = document.getElementById('bg-text');
+        
+        let isCustomBackground = true;
+        
+        // Fungsi untuk mengganti background
+        function toggleBackground() {
+            if (isCustomBackground) {
+                // Switch ke gradient
+                backgroundFullscreen.style.backgroundImage = 'none';
+                backgroundFullscreen.classList.add('background-gradient');
+                bgText.textContent = 'Gradient Background';
+            } else {
+                // Switch ke gambar custom
+                backgroundFullscreen.style.backgroundImage = "url('{{ url_for('static', filename='staticimages/background.jpeg') }}')";
+                backgroundFullscreen.classList.remove('background-gradient');
+                bgText.textContent = 'Custom Background';
             }
-        });
-
-        function applyBackground(imageUrl) {
-            // Tambah class untuk custom background
-            backgroundFullscreen.classList.add('has-custom-bg');
-            
-            // Set custom property CSS
-            document.documentElement.style.setProperty('--custom-bg-image', `url(${imageUrl})`);
+            isCustomBackground = !isCustomBackground;
         }
-
-        // Script untuk mempertahankan logo yang sudah diupload
-        const savedLogo = localStorage.getItem('tandurBawangLogo');
-        if (savedLogo) {
-            const logoDisplay = document.querySelector('.logo-display');
-            logoDisplay.innerHTML = `<img src="${savedLogo}" alt="Logo Tandur Bawang" class="w-48 h-48 rounded-full object-cover mx-auto border-4 border-white shadow-2xl">`;
-        }
+        
+        // Event listener untuk tombol toggle
+        toggleBtn.addEventListener('click', toggleBackground);
     });
 </script>
 {% endblock %}
