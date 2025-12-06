@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block public_content %}
+<!-- Background Full Screen -->
+<div class="background-fullscreen" id="background-fullscreen"></div>
+
+<!-- Konten utama -->
+<div class="min-h-screen flex items-center justify-center p-4 relative z-10">
+    <div class="max-w-lg w-full flex flex-col items-center">
+        <!-- Logo di atas kotak -->
+        <div class="logo-display mb-8 text-center">
+            {% if session.get('uploaded_logo') %}
+                <img src="{{ session.uploaded_logo }}" alt="Logo Tandur Bawang" class="w-48 h-48 rounded-full object-cover mx-auto border-4 border-white shadow-2xl">
+            {% else %}
+                <div class="w-48 h-48 bg-white rounded-full flex items-center justify-center text-purple-600 text-5xl font-bold mx-auto border-4 border-white shadow-2xl">
+                    TB
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Kotak utama dengan border putih -->
+        <div class="card-retro rounded-2xl p-8 shadow-2xl border-2 border-white">
+            <!-- Judul dan deskripsi -->
+            <div class="mb-8 text-center space-y-4">
+                <h1 class="text-2xl font-bold text-purple-900 leading-tight retro-text">
+                    Selamat Datang di Tandur Bawang 👋
+                </h1>
+                <!-- Teks dalam satu baris -->
+                <div class="text-center">
+                    <p class="text-base text-purple-800 font-medium leading-tight retro-text whitespace-nowrap pb-1 border-b-2 border-purple-500 inline-block">
+                        Akuntansi Cerdas untuk Petani Bawang Unggul
+                    </p>
+                </div>
+            </div>
+
+            <!-- Tombol Login dan Register sejajar -->
+            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8">
+                <!-- Tombol Login -->
+                <a href="{{ url_for('login') }}"
+                   class="flex-1 max-w-xs w-full px-6 py-3 rounded-xl bg-white text-purple-600 shadow-lg hover:bg-purple-50 transition transform hover:-translate-y-1 text-center font-semibold retro-btn">
+                    Login
+                </a>
+
+                <!-- Tombol Register -->
+                <a href="{{ url_for('register') }}"
+                   class="flex-1 max-w-xs w-full px-6 py-3 rounded-xl bg-white text-purple-600 shadow-lg hover:bg-purple-50 transition transform hover:-translate-y-1 text-center font-semibold retro-btn">
+                    Register
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tombol Explorer Background di pojok kiri bawah -->
+<div class="fixed bottom-4 left-4 z-50">
+    <label for="background-upload" class="cursor-pointer inline-flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-xs retro-btn-small">
+        <i class="fas fa-image mr-1"></i>
+        Ganti Background
+    </label>
+    <input type="file" id="background-upload" class="hidden" accept="image/*">
+</div>
+
+<style>
+    /* Background Full Screen */
+    .background-fullscreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, 
+            #1e1b4b 0%, 
+            #312e81 25%, 
+            #4338ca 50%, 
+            #6366f1 75%, 
+            #818cf8 100%);
+        background-size: 400% 400%;
+        animation: galaxyMove 20s ease infinite;
+        z-index: 1;
+        transition: background-image 0.5s ease;
+    }
+
+    /* Jika ada custom background */
+    .background-fullscreen.has-custom-bg {
+        background: var(--custom-bg-image) center/cover no-repeat !important;
+        animation: none;
+    }
+
+    /* Kotak dengan border putih */
+    .card-retro {
+        background-color: #d8b4fe;
+        position: relative;
+        z-index: 10;
+        max-width: 32rem;
+        width: 100%;
+        box-shadow: 
+            8px 8px 0px #a855f7,
+            15px 15px 20px rgba(0, 0, 0, 0.3),
+            inset 2px 2px 0px rgba(255, 255, 255, 0.4),
+            inset -2px -2px 0px rgba(0, 0, 0, 0.1);
+        transform: perspective(500px) rotateX(2deg);
+        transition: all 0.3s ease;
+    }
+
+    .card-retro:hover {
+        transform: perspective(500px) rotateX(0deg) translateY(-5px);
+        box-shadow: 
+            12px 12px 0px #a855f7,
+            20px 20px 25px rgba(0, 0, 0, 0.4),
+            inset 2px 2px 0px rgba(255, 255, 255, 0.4),
+            inset -2px -2px 0px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Efek retro untuk teks */
+    .retro-text {
+        text-shadow: 
+            2px 2px 0px rgba(168, 85, 247, 0.3),
+            1px 1px 0px rgba(255, 255, 255, 0.8);
+        letter-spacing: 0.5px;
+    }
+
+    /* Tombol dengan efek retro */
+    .retro-btn {
+        border: 2px solid #a855f7;
+        box-shadow: 
+            4px 4px 0px #a855f7,
+            inset 1px 1px 0px rgba(255, 255, 255, 0.8);
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        transition: all 0.2s ease;
+    }
+
+    .retro-btn:hover {
+        transform: translate(2px, 2px);
+        box-shadow: 
+            2px 2px 0px #a855f7,
+            inset 1px 1px 0px rgba(255, 255, 255, 0.8);
+    }
+
+    /* Tombol kecil untuk background */
+    .retro-btn-small {
+        border: 2px solid #a855f7;
+        box-shadow: 
+            2px 2px 0px #a855f7,
+            inset 1px 1px 0px rgba(255, 255, 255, 0.8);
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        transition: all 0.2s ease;
+        background: rgba(109, 40, 217, 0.9);
+    }
+
+    .retro-btn-small:hover {
+        transform: translate(1px, 1px);
+        box-shadow: 
+            1px 1px 0px #a855f7,
+            inset 1px 1px 0px rgba(255, 255, 255, 0.8);
+        background: rgba(109, 40, 217, 1);
+    }
+
+    /* Animasi halus untuk logo */
+    .logo-display {
+        animation: gentleFloat 4s ease-in-out infinite;
+        position: relative;
+        z-index: 10;
+        filter: drop-shadow(4px 4px 0px rgba(168, 85, 247, 0.3));
+    }
+
+    @keyframes gentleFloat {
+        0%, 100% {
+            transform: translateY(0px);
+        }
+        50% {
+            transform: translateY(-10px);
+        }
+    }
+
+    @keyframes galaxyMove {
+        0% {
+            background-position: 0% 50%;
+        }
+        50% {
+            background-position: 100% 50%;
+        }
+        100% {
+            background-position: 0% 50%;
+        }
+    }
+
+    /* Responsive design */
+    @media (max-width: 640px) {
+        .max-w-lg {
+            max-width: 28rem;
+        }
+        
+        .card-retro {
+            margin: 0;
+            padding: 1.5rem;
+            transform: perspective(500px) rotateX(0deg);
+        }
+        
+        .card-retro:hover {
+            transform: translateY(-5px);
+        }
+        
+        /* Logo di mobile */
+        .logo-display img,
+        .logo-display div {
+            width: 40vw;
+            height: 40vw;
+            max-width: 160px;
+            max-height: 160px;
+        }
+        
+        .logo-display div {
+            font-size: 2.5rem;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+        }
+        
+        p {
+            font-size: 0.9rem;
+        }
+
+        /* Tombol background di mobile */
+        .fixed.bottom-4.left-4 {
+            bottom: 2rem;
+            left: 1rem;
+        }
+        
+        .retro-btn-small {
+            font-size: 0.7rem;
+            padding: 0.4rem 0.6rem;
+        }
+    }
+</style>
+
+<script>
+    // Script untuk upload background
+    document.addEventListener('DOMContentLoaded', function() {
+        const backgroundUpload = document.getElementById('background-upload');
+        const backgroundFullscreen = document.getElementById('background-fullscreen');
+
+        // Cek jika ada background yang sudah diupload
+        const savedBackground = localStorage.getItem('tandurBawangBackground');
+        if (savedBackground) {
+            applyBackground(savedBackground);
+        }
+
+        // Handle upload background
+        backgroundUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const backgroundUrl = e.target.result;
+                    applyBackground(backgroundUrl);
+                    localStorage.setItem('tandurBawangBackground', backgroundUrl);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function applyBackground(imageUrl) {
+            // Tambah class untuk custom background
+            backgroundFullscreen.classList.add('has-custom-bg');
+            
+            // Set custom property CSS
+            document.documentElement.style.setProperty('--custom-bg-image', `url(${imageUrl})`);
+        }
+
+        // Script untuk mempertahankan logo yang sudah diupload
+        const savedLogo = localStorage.getItem('tandurBawangLogo');
+        if (savedLogo) {
+            const logoDisplay = document.querySelector('.logo-display');
+            logoDisplay.innerHTML = `<img src="${savedLogo}" alt="Logo Tandur Bawang" class="w-48 h-48 rounded-full object-cover mx-auto border-4 border-white shadow-2xl">`;
+        }
+    });
+</script>
+{% endblock %}

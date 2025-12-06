@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="p-6">
+    <div class="mb-6">
+        <!-- Judul Dashboard dengan Simbol -->
+        <div class="flex items-center space-x-3">
+            <div class="bg-purple-100 p-2 rounded-lg">
+                <i class="fas fa-tachometer-alt text-purple-800 text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-purple-900">Dashboard</h1>
+                <p class="text-gray-600">Selamat datang, {{ current_user.username }}!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profil Perusahaan -->
+    <div class="bg-[#b564c7] rounded-lg shadow p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <h2 class="text-xl font-bold text-white mb-2">Profil Perusahaan</h2>
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold text-white">Tandur Bawang</h3>
+                    <p class="text-white mt-2">Tandur Bawang adalah usaha yang bergerak dalam budidaya dan penjualan bawang merah berkualitas. Dengan metode tanam yang efisien dan terstandar, usaha ini menghasilkan bawang merah segar, bermutu, dan siap memenuhi kebutuhan pasar.</p>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex items-start">
+                        <i class="fas fa-map-marker-alt text-white mt-1 mr-2"></i>
+                        <span class="text-white">Jalan Kalimasada, Desa Banaran, Kecamatan Gunung Pati, Kota Semarang</span>
+                    </div>
+                    <div class="flex items-center">
+                        <i class="fas fa-phone text-white mr-2"></i>
+                        <span class="text-white">0895386317280</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center justify-center">
+                <!-- Image dengan lingkaran putih di belakang (diperbesar) -->
+                <div class="relative">
+                    <div class="w-60 h-60 bg-white rounded-full flex items-center justify-center shadow-lg">
+                        <div class="w-56 h-56 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+                            <!-- Preview gambar dari upload -->
+                            <img id="profile-preview" class="w-full h-full object-cover hidden" src="" alt="Logo Tandur Bawang">
+                            <!-- Placeholder jika belum ada gambar -->
+                            <i id="profile-placeholder" class="fas fa-building text-gray-400 text-5xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards dengan warna #c848ac -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div class="bg-[#c848ac] p-6 rounded-lg shadow">
+            <div class="flex items-center">
+                <div class="p-3 bg-white/20 rounded-lg">
+                    <i class="fas fa-chart-line text-white"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-white">Total Akun</h3>
+                    <p class="text-2xl font-bold text-white">{{ total_accounts }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-[#c848ac] p-6 rounded-lg shadow">
+            <div class="flex items-center">
+                <div class="p-3 bg-white/20 rounded-lg">
+                    <i class="fas fa-exchange-alt text-white"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-white">Total Transaksi</h3>
+                    <p class="text-2xl font-bold text-white">{{ total_transactions }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-[#c848ac] p-6 rounded-lg shadow">
+            <div class="flex items-center">
+                <div class="p-3 bg-white/20 rounded-lg">
+                    <i class="fas fa-book text-white"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-white">Total Jurnal</h3>
+                    <p class="text-2xl font-bold text-white">{{ total_journal_entries }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-[#c848ac] p-6 rounded-lg shadow">
+            <div class="flex items-center">
+                <div class="p-3 bg-white/20 rounded-lg">
+                    <i class="fas fa-money-bill-wave text-white"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-white">Laba/Rugi</h3>
+                    <p id="net-income" class="text-2xl font-bold text-white">
+                        {% if net_income is defined and net_income is not none %}
+                            Rp {{ "{:,.2f}".format(net_income) }}
+                        {% else %}
+                            Rp 0.00
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ringkasan Laporan Keuangan dengan warna #c848ac -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- Ringkasan Laba Rugi -->
+        <div class="bg-[#c848ac] rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-white">Ringkasan Laba Rugi</h2>
+                <button id="refresh-income-statement" class="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-colors">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            <div id="income-statement-content">
+                {% if income_statement and income_statement is defined %}
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-white text-base">Pendapatan</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(income_statement.revenue) }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-white text-base">Harga Pokok Penjualan</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(income_statement.hpp) }}
+                        </span>
+                    </div>
+                    <div class="border-t border-white/30 pt-3 flex justify-between items-center py-2">
+                        <span class="text-white font-bold text-base">Laba Kotor</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(income_statement.gross_profit) }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-white text-base">Beban Operasional</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(income_statement.operating_expenses) }}
+                        </span>
+                    </div>
+                    <div class="border-t border-white/30 pt-3 flex justify-between items-center py-2">
+                        <span class="text-white font-bold text-base">Laba Bersih</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(income_statement.net_income) }}
+                        </span>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-white/80 text-center py-4">Data laporan laba rugi belum tersedia.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Ringkasan Neraca -->
+        <div class="bg-[#c848ac] rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-white">Ringkasan Neraca</h2>
+                <button id="refresh-balance-sheet" class="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-colors">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            <div id="balance-sheet-content">
+                {% if balance_sheet and balance_sheet is defined %}
+                <div class="space-y-4">
+                    <div class="mb-4">
+                        <h3 class="text-md font-semibold text-white mb-3">Aset</h3>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Total Aset</span>
+                            <span class="font-bold text-white text-base">
+                                Rp {{ "{:,.2f}".format(balance_sheet.assets) }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <h3 class="text-md font-semibold text-white mb-3">Kewajiban</h3>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Total Kewajiban</span>
+                            <span class="font-bold text-white text-base">
+                                Rp {{ "{:,.2f}".format(balance_sheet.liabilities) }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <h3 class="text-md font-semibold text-white mb-3">Ekuitas</h3>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Total Ekuitas</span>
+                            <span class="font-bold text-white text-base">
+                                Rp {{ "{:,.2f}".format(balance_sheet.equity) }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-white/80 text-center py-4">Data neraca belum tersedia.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Ringkasan Laporan Perubahan Modal -->
+        <div class="bg-[#c848ac] rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-white">Perubahan Modal</h2>
+                <button id="refresh-equity-statement" class="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-colors">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            <div id="equity-statement-content">
+                {% if balance_sheet and balance_sheet is defined and income_statement and income_statement is defined %}
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-white text-base">Modal Awal</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(balance_sheet.initial_equity) }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-white text-base">Laba Bersih</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(income_statement.net_income) }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-white text-base">Prive</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(balance_sheet.prive) }}
+                        </span>
+                    </div>
+                    <div class="border-t border-white/30 pt-3 flex justify-between items-center py-2">
+                        <span class="text-white font-bold text-base">Modal Akhir</span>
+                        <span class="font-bold text-white text-base">
+                            Rp {{ "{:,.2f}".format(balance_sheet.equity) }}
+                        </span>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-white/80 text-center py-4">Data perubahan modal belum tersedia.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Opsi Upload Logo -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="text-lg font-semibold text-purple-900 mb-3">Upload Logo Perusahaan</h3>
+        <div class="flex flex-col items-center space-y-4">
+            <!-- Upload Button -->
+            <label class="bg-purple-600 text-white px-6 py-3 rounded-lg text-sm font-medium cursor-pointer hover:bg-purple-700 transition-colors">
+                <i class="fas fa-upload mr-2"></i>
+                Pilih Logo
+                <input id="company-logo" type="file" class="hidden" accept="image/*" />
+            </label>
+            
+            <p class="text-xs text-gray-500 text-center">
+                Logo akan ditampilkan di profil perusahaan<br>
+                Format: PNG, JPG, GIF • Maksimal: 2MB
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript untuk Upload Gambar dan Penyimpanan -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('company-logo');
+    const profilePreview = document.getElementById('profile-preview');
+    const profilePlaceholder = document.getElementById('profile-placeholder');
+    const refreshIncomeBtn = document.getElementById('refresh-income-statement');
+    const refreshBalanceBtn = document.getElementById('refresh-balance-sheet');
+    const refreshEquityBtn = document.getElementById('refresh-equity-statement');
+
+    // Fungsi untuk memformat angka ke format Rupiah
+    function formatRupiah(amount) {
+        return 'Rp ' + new Intl.NumberFormat('id-ID', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount);
+    }
+
+    // Fungsi untuk mengambil data financial statements terbaru
+    async function refreshFinancialData() {
+        try {
+            const response = await fetch('/api/dashboard/financial_data');
+            const data = await response.json();
+            
+            if (data.success) {
+                // Update Laba/Rugi
+                const netIncomeElement = document.getElementById('net-income');
+                netIncomeElement.textContent = formatRupiah(data.net_income);
+                
+                // Update Income Statement
+                const incomeStatement = data.income_statement;
+                const incomeContent = document.getElementById('income-statement-content');
+                
+                incomeContent.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Pendapatan</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(incomeStatement.revenue || 0)}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Harga Pokok Penjualan</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(incomeStatement.hpp || 0)}
+                            </span>
+                        </div>
+                        <div class="border-t border-white/30 pt-3 flex justify-between items-center py-2">
+                            <span class="text-white font-bold text-base">Laba Kotor</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(incomeStatement.gross_profit || 0)}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Beban Operasional</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(incomeStatement.operating_expenses || 0)}
+                            </span>
+                        </div>
+                        <div class="border-t border-white/30 pt-3 flex justify-between items-center py-2">
+                            <span class="text-white font-bold text-base">Laba Bersih</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(incomeStatement.net_income || 0)}
+                            </span>
+                        </div>
+                    </div>
+                `;
+                
+                // Update Balance Sheet
+                const balanceSheet = data.balance_sheet;
+                const balanceContent = document.getElementById('balance-sheet-content');
+                
+                balanceContent.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="mb-4">
+                            <h3 class="text-md font-semibold text-white mb-3">Aset</h3>
+                            <div class="flex justify-between items-center py-2">
+                                <span class="text-white text-base">Total Aset</span>
+                                <span class="font-bold text-white text-base">
+                                    ${formatRupiah(balanceSheet.assets || 0)}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <h3 class="text-md font-semibold text-white mb-3">Kewajiban</h3>
+                            <div class="flex justify-between items-center py-2">
+                                <span class="text-white text-base">Total Kewajiban</span>
+                                <span class="font-bold text-white text-base">
+                                    ${formatRupiah(balanceSheet.liabilities || 0)}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <h3 class="text-md font-semibold text-white mb-3">Ekuitas</h3>
+                            <div class="flex justify-between items-center py-2">
+                                <span class="text-white text-base">Total Ekuitas</span>
+                                <span class="font-bold text-white text-base">
+                                    ${formatRupiah(balanceSheet.equity || 0)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Update Equity Statement
+                const equityContent = document.getElementById('equity-statement-content');
+                
+                equityContent.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Modal Awal</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(balanceSheet.initial_equity || 0)}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Laba Bersih</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(incomeStatement.net_income || 0)}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center py-2">
+                            <span class="text-white text-base">Prive</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(balanceSheet.prive || 0)}
+                            </span>
+                        </div>
+                        <div class="border-t border-white/30 pt-3 flex justify-between items-center py-2">
+                            <span class="text-white font-bold text-base">Modal Akhir</span>
+                            <span class="font-bold text-white text-base">
+                                ${formatRupiah(balanceSheet.equity || 0)}
+                            </span>
+                        </div>
+                    </div>
+                `;
+                
+                // Show success message
+                showNotification('Data financial statements berhasil diperbarui!', 'success');
+            } else {
+                showNotification('Gagal memuat data financial statements: ' + data.error, 'error');
+            }
+        } catch (error) {
+            console.error('Error refreshing financial data:', error);
+            showNotification('Terjadi kesalahan saat memuat data', 'error');
+        }
+    }
+
+    // Fungsi untuk menampilkan notifikasi
+    function showNotification(message, type) {
+        // Buat elemen notifikasi
+        const notification = document.createElement('div');
+        notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+            type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`;
+        notification.textContent = message;
+        
+        document.body.appendChild(notification);
+        
+        // Hapus notifikasi setelah 3 detik
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    }
+
+    // Event listener untuk tombol refresh
+    refreshIncomeBtn.addEventListener('click', refreshFinancialData);
+    refreshBalanceBtn.addEventListener('click', refreshFinancialData);
+    refreshEquityBtn.addEventListener('click', refreshFinancialData);
+
+    // Cek apakah ada logo yang tersimpan di localStorage
+    function loadSavedLogo() {
+        const savedLogo = localStorage.getItem('tandurBawangLogo');
+        if (savedLogo) {
+            profilePreview.src = savedLogo;
+            profilePreview.classList.remove('hidden');
+            profilePlaceholder.classList.add('hidden');
+        } else {
+            profilePreview.classList.add('hidden');
+            profilePlaceholder.classList.remove('hidden');
+        }
+    }
+
+    // Simpan logo ke localStorage
+    function saveLogoToStorage(imageData) {
+        localStorage.setItem('tandurBawangLogo', imageData);
+    }
+
+    // Hapus logo dari localStorage
+    function removeLogoFromStorage() {
+        localStorage.removeItem('tandurBawangLogo');
+    }
+
+    // Load logo yang tersimpan saat halaman dimuat
+    loadSavedLogo();
+
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            // Validasi ukuran file (max 2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                alert('Ukuran file maksimal 2MB');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                profilePreview.src = imageData;
+                profilePreview.classList.remove('hidden');
+                profilePlaceholder.classList.add('hidden');
+                
+                // Simpan ke localStorage
+                saveLogoToStorage(imageData);
+            }
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Klik pada preview gambar untuk mengganti
+    profilePreview.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    // Klik pada placeholder untuk upload
+    profilePlaceholder.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    // Optional: Tambahkan konfirmasi hapus logo dengan klik kanan
+    profilePreview.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        if (confirm('Hapus logo?')) {
+            profilePreview.classList.add('hidden');
+            profilePlaceholder.classList.remove('hidden');
+            removeLogoFromStorage();
+        }
+    });
+
+    // Auto-refresh financial data setiap 30 detik
+    setInterval(refreshFinancialData, 30000);
+});
+</script>
+{% endblock %}

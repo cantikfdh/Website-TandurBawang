@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+{% block title %}Jurnal Penutup - Tandur Bawang{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 p-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-6 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                <i class="fas fa-lock text-purple-600"></i>
+                CLOSING ENTRIES
+            </h1>
+            <div class="flex gap-3">
+                <button onclick="printClosingEntries()" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors no-print">
+                    <i class="fas fa-print"></i>
+                    PRINT
+                </button>
+            </div>
+        </div>
+
+        <!-- Alert Messages -->
+        <div id="alertMessage" class="hidden mb-6"></div>
+
+        <!-- Data dari Adjusted Trial Balance -->
+        {% set penjualan = 3735000 %}
+        {% set penjualan_lain = 20000 %}
+        {% set beban_transportasi = 150000 %}
+        {% set beban_tenaga_kerja = 200000 %}
+        {% set beban_sewa = 400000 %}
+        {% set beban_perbaikan = 150000 %}
+        {% set beban_penyusutan = 125000 %}
+        {% set hpp = 2170000 %}
+        {% set prive = 635000 %}
+        
+        <!-- Perhitungan totals -->
+        {% set total_pendapatan = penjualan + penjualan_lain %}
+        {% set total_beban = beban_transportasi + beban_tenaga_kerja + beban_sewa + beban_perbaikan + beban_penyusutan %}
+        {% set laba_bersih = total_pendapatan - (total_beban + hpp) %}
+        
+        <!-- Total Debit dan Kredit untuk semua entri -->
+        {% set total_all_debit = total_pendapatan + total_beban + hpp + laba_bersih + prive %}
+        {% set total_all_credit = total_pendapatan + total_beban + hpp + laba_bersih + prive %}
+        
+        <!-- Jumlah entri (setiap pasangan jurnal dihitung 2 entri) -->
+        {% set total_entries = 11 %}
+
+        <!-- Status Information -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-[#c848ac] rounded-lg p-4 text-center text-white">
+                <div class="text-2xl font-bold mb-1">{{ total_entries }}</div>
+                <div class="text-sm font-medium">TOTAL ENTRI</div>
+            </div>
+            <div class="bg-[#c848ac] rounded-lg p-4 text-center text-white">
+                <div class="text-2xl font-bold mb-1">Rp {{ "{:,.2f}".format(total_all_debit) }}</div>
+                <div class="text-sm font-medium">TOTAL DEBIT</div>
+            </div>
+            <div class="bg-[#c848ac] rounded-lg p-4 text-center text-white">
+                <div class="text-2xl font-bold mb-1">Rp {{ "{:,.2f}".format(total_all_credit) }}</div>
+                <div class="text-sm font-medium">TOTAL KREDIT</div>
+            </div>
+            <div class="bg-[#c848ac] rounded-lg p-4 text-center text-white">
+                <div class="text-2xl font-bold mb-1">
+                    Rp {{ "{:,.2f}".format((total_all_debit - total_all_credit)|abs) }}
+                </div>
+                <div class="text-sm font-medium">
+                    {% if total_all_debit == total_all_credit %}
+                    <span class="text-green-300">BALANCED</span>
+                    {% else %}
+                    <span class="text-yellow-300">UNBALANCED</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Closing Entries Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <!-- Table Header -->
+            <div class="bg-[#b564c7] text-white px-6 py-3">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-semibold">CLOSING ENTRIES</h2>
+                    <div class="text-sm">
+                        Total: {{ total_entries }} entri
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Content -->
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                Tanggal
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                Keterangan
+                            </th>
+                            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                Debit (Rp)
+                            </th>
+                            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Kredit (Rp)
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% if closing_entries %}
+                            <!-- 1. Menutup Pendapatan ke Ikhtisar Laba Rugi -->
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Penjualan
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900 border-r border-gray-200">
+                                    Rp {{ "{:,.2f}".format(penjualan) }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400">
+                                    -
+                                </td>
+                            </tr>
+                            
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Penjualan Lain - Lain
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900 border-r border-gray-200">
+                                    Rp {{ "{:,.2f}".format(penjualan_lain) }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400">
+                                    -
+                                </td>
+                            </tr>
+
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Ikhtisar Laba Rugi
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(total_pendapatan) }}
+                                </td>
+                            </tr>
+
+                            <!-- 2. Menutup Beban ke Ikhtisar Laba Rugi -->
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Ikhtisar Laba Rugi
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900 border-r border-gray-200">
+                                    Rp {{ "{:,.2f}".format(total_beban) }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400">
+                                    -
+                                </td>
+                            </tr>
+
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Beban Transportasi
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(beban_transportasi) }}
+                                </td>
+                            </tr>
+                            
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Beban Tenaga Kerja
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(beban_tenaga_kerja) }}
+                                </td>
+                            </tr>
+                            
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Beban Sewa
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(beban_sewa) }}
+                                </td>
+                            </tr>
+                            
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Beban Perbaikan
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(beban_perbaikan) }}
+                                </td>
+                            </tr>
+                            
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Beban Penyusutan
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(beban_penyusutan) }}
+                                </td>
+                            </tr>
+
+                            <!-- 3. Menutup HPP ke Ikhtisar Laba Rugi -->
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Ikhtisar Laba Rugi
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900 border-r border-gray-200">
+                                    Rp {{ "{:,.2f}".format(hpp) }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400">
+                                    -
+                                </td>
+                            </tr>
+
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Harga Pokok Penjualan
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(hpp) }}
+                                </td>
+                            </tr>
+
+                            <!-- 4. Menutup Ikhtisar Laba Rugi ke Modal -->
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Ikhtisar Laba Rugi
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900 border-r border-gray-200">
+                                    Rp {{ "{:,.2f}".format(laba_bersih) }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400">
+                                    -
+                                </td>
+                            </tr>
+
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Modal
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(laba_bersih) }}
+                                </td>
+                            </tr>
+
+                            <!-- 5. Menutup Prive ke Modal -->
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Modal
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900 border-r border-gray-200">
+                                    Rp {{ "{:,.2f}".format(prive) }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400">
+                                    -
+                                </td>
+                            </tr>
+
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm text-gray-900 border-r border-gray-200">
+                                    31/12/2025
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-800 border-r border-gray-200">
+                                    Prive
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-400 border-r border-gray-200">
+                                    -
+                                </td>
+                                <td class="px-6 py-4 text-sm text-right text-gray-900">
+                                    Rp {{ "{:,.2f}".format(prive) }}
+                                </td>
+                            </tr>
+                            
+                        {% else %}
+                            <tr>
+                                <td colspan="4" class="px-6 py-12 text-center text-gray-500">
+                                    <div class="flex flex-col items-center justify-center">
+                                        <i class="fas fa-lock text-4xl text-gray-300 mb-3"></i>
+                                        <p class="text-lg font-medium text-gray-400 mb-2">Belum ada jurnal penutup</p>
+                                        <p class="text-sm text-gray-400">Closing entries akan dibuat otomatis saat ada data</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                    
+                    <!-- Totals Row -->
+                    {% if closing_entries %}
+                    <tfoot class="bg-[#b564c7] text-white font-bold">
+                        <tr>
+                            <td colspan="2" class="px-6 py-4 text-right border-r border-gray-300">
+                                TOTAL:
+                            </td>
+                            <td class="px-6 py-4 text-right border-r border-gray-300">
+                                Rp {{ "{:,.2f}".format(total_all_debit) }}
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                Rp {{ "{:,.2f}".format(total_all_credit) }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function printClosingEntries() {
+    window.print();
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.getElementById('alertMessage');
+    const bgColor = type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+    const textColor = type === 'success' ? 'text-green-800' : 'text-red-800';
+    const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+    const iconColor = type === 'success' ? 'text-green-500' : 'text-red-500';
+    
+    alertDiv.innerHTML = `
+        <div class="${bgColor} border rounded-lg p-4 ${textColor}">
+            <div class="flex items-center gap-3">
+                <i class="fas ${icon} ${iconColor}"></i>
+                <div class="flex-1">${message}</div>
+                <button onclick="this.parentElement.parentElement.classList.add('hidden')" 
+                        class="text-${type === 'success' ? 'green' : 'red'}-400 hover:text-${type === 'success' ? 'green' : 'red'}-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    alertDiv.classList.remove('hidden');
+    
+    // Auto hide after 5 seconds
+    setTimeout(() => {
+        alertDiv.classList.add('hidden');
+    }, 5000);
+}
+</script>
+
+<style>
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    body {
+        background: white !important;
+        font-size: 12px !important;
+    }
+    .bg-gray-50 {
+        background: white !important;
+    }
+    .shadow-sm {
+        box-shadow: none !important;
+    }
+    .border {
+        border-color: #000 !important;
+    }
+    .hover\:bg-gray-50:hover {
+        background: white !important;
+    }
+    .bg-blue-50, .bg-yellow-50 {
+        background: white !important;
+        border: 1px solid #000 !important;
+    }
+}
+</style>
+{% endblock %}

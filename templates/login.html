@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block public_content %}
+<div class="max-w-md mx-auto bg-white/40 backdrop-blur-md p-8 rounded-2xl shadow-lg">
+    <h2 class="text-3xl font-bold text-purple-900 text-center mb-6">Login</h2>
+
+    <form method="POST">
+        <label class="block mb-3">
+            <span class="text-gray-700">Username</span>
+            <input type="text" name="username" required
+                   class="mt-1 w-full px-4 py-2 rounded-lg bg-white shadow focus:ring-2 focus:ring-purple-400">
+        </label>
+
+        <label class="block mb-3">
+            <span class="text-gray-700">Password</span>
+            <input type="password" name="password" required
+                   class="mt-1 w-full px-4 py-2 rounded-lg bg-white shadow focus:ring-2 focus:ring-purple-400">
+        </label>
+
+        <button class="w-full mt-4 py-3 rounded-xl bg-purple-400 text-white hover:bg-purple-500 transition shadow">
+            Login
+        </button>
+    </form>
+
+    <p class="text-center mt-6 text-gray-700">
+        Belum punya akun?
+        <a href="{{ url_for('register') }}" class="text-purple-900 font-semibold hover:underline">
+            Buat akun
+        </a>
+    </p>
+</div>
+{% endblock %}
