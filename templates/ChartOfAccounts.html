@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <div class="flex items-center gap-4 mb-2">
+                <div class="p-3 bg-white rounded-2xl shadow-lg border border-purple-100">
+                    <i class="fas fa-chart-pie text-2xl text-amethyst"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-bold text-amethyst-dark">Chart of Accounts</h1>
+                    <p class="text-amethyst">Kelola semua akun dalam sistem dengan mudah</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+            <div class="bg-[#c848ac] rounded-2xl shadow-lg border border-[#c848ac] p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-white bg-opacity-20 rounded-xl">
+                        <i class="fas fa-list text-white"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h3 class="text-sm font-medium text-white">Total Akun</h3>
+                        <p class="text-2xl font-bold text-white">{{ accounts|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-[#c848ac] rounded-2xl shadow-lg border border-[#c848ac] p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-white bg-opacity-20 rounded-xl">
+                        <i class="fas fa-wallet text-white"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h3 class="text-sm font-medium text-white">Aset</h3>
+                        <p class="text-2xl font-bold text-white">{{ accounts|selectattr("account_type", "equalto", "Aset")|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-[#c848ac] rounded-2xl shadow-lg border border-[#c848ac] p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-white bg-opacity-20 rounded-xl">
+                        <i class="fas fa-file-invoice-dollar text-white"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h3 class="text-sm font-medium text-white">Liabilitas</h3>
+                        <p class="text-2xl font-bold text-white">{{ accounts|selectattr("account_type", "equalto", "Liabilitas")|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-[#c848ac] rounded-2xl shadow-lg border border-[#c848ac] p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-white bg-opacity-20 rounded-xl">
+                        <i class="fas fa-hand-holding-usd text-white"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h3 class="text-sm font-medium text-white">Ekuitas</h3>
+                        <p class="text-2xl font-bold text-white">{{ accounts|selectattr("account_type", "equalto", "Ekuitas")|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-[#c848ac] rounded-2xl shadow-lg border border-[#c848ac] p-6">
+                <div class="flex items-center">
+                    <div class="p-3 bg-white bg-opacity-20 rounded-xl">
+                        <i class="fas fa-chart-line text-white"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h3 class="text-sm font-medium text-white">Pendapatan & Beban</h3>
+                        <p class="text-2xl font-bold text-white">{{ (accounts|selectattr("account_type", "equalto", "Pendapatan")|list + accounts|selectattr("account_type", "equalto", "Beban")|list)|length }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="mb-6 p-6 bg-white rounded-2xl shadow-lg border border-amethyst-border">
+            <div class="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
+                <div class="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+                    <!-- Search Box -->
+                    <div class="relative flex-1 sm:flex-none">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-search text-amethyst"></i>
+                        </div>
+                        <input type="text" id="searchInput" placeholder="Cari akun..." 
+                               class="pl-10 pr-4 py-3 w-full sm:w-64 border border-amethyst-border rounded-xl focus:ring-2 focus:ring-amethyst focus:border-amethyst bg-white transition-all duration-300">
+                    </div>
+                    
+                    <!-- Filter -->
+                    <select id="typeFilter" class="px-4 py-3 border border-amethyst-border rounded-xl focus:ring-2 focus:ring-amethyst focus:border-amethyst bg-white transition-all duration-300">
+                        <option value="">Semua Tipe</option>
+                        <option value="Aset">Aset</option>
+                        <option value="Aset Kontra">Aset Kontra</option>
+                        <option value="Liabilitas">Liabilitas</option>
+                        <option value="Ekuitas">Ekuitas</option>
+                        <option value="Pendapatan">Pendapatan</option>
+                        <option value="Beban">Beban</option>
+                    </select>
+                </div>
+                
+                <!-- Add Button -->
+                <button onclick="openAddAccountModal()" 
+                        class="bg-amethyst hover:bg-amethyst-dark text-white px-6 py-3 rounded-xl flex items-center gap-3 transition-all duration-300 transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-plus"></i>
+                    <span>Tambah Akun Baru</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Accounts Table -->
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden border border-amethyst-border">
+            <div class="overflow-x-auto">
+                <table class="min-w-full border-collapse border border-amethyst-border">
+                    <thead class="bg-[#4C1D95]">
+                        <tr>
+                            <th class="border border-[#4C1D95] px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">No</th>
+                            <th class="border border-[#4C1D95] px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Kode Akun</th>
+                            <th class="border border-[#4C1D95] px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Nama Akun</th>
+                            <th class="border border-[#4C1D95] px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Tipe</th>
+                            <th class="border border-[#4C1D95] px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Kategori</th>
+                            <th class="border border-[#4C1D95] px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Saldo Normal</th>
+                            <th class="border border-[#4C1D95] px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-amethyst-light" id="accountsTable">
+                        {% for account in accounts %}
+                        <tr class="account-row hover:bg-amethyst-light transition-colors duration-200" data-type="{{ account.account_type }}">
+                            <td class="border border-amethyst-light px-6 py-4 whitespace-nowrap text-sm text-amethyst">{{ loop.index }}</td>
+                            <td class="border border-amethyst-light px-6 py-4 whitespace-nowrap text-sm font-medium text-amethyst-dark">
+                                {{ account.account_code }}
+                            </td>
+                            <td class="border border-amethyst-light px-6 py-4 text-sm text-amethyst-dark">
+                                {{ account.account_name }}
+                            </td>
+                            <td class="border border-amethyst-light px-6 py-4 whitespace-nowrap text-sm text-amethyst">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                    {% if account.account_type == 'Aset' %}bg-blue-100 text-blue-800
+                                    {% elif account.account_type == 'Aset Kontra' %}bg-red-100 text-red-800
+                                    {% elif account.account_type == 'Liabilitas' %}bg-orange-100 text-orange-800
+                                    {% elif account.account_type == 'Ekuitas' %}bg-green-100 text-green-800
+                                    {% elif account.account_type == 'Pendapatan' %}bg-purple-100 text-purple-800
+                                    {% else %}bg-pink-100 text-pink-800{% endif %}">
+                                    {{ account.account_type }}
+                                </span>
+                            </td>
+                            <td class="border border-amethyst-light px-6 py-4 whitespace-nowrap text-sm text-amethyst">
+                                {{ account.category }}
+                            </td>
+                            <td class="border border-amethyst-light px-6 py-4 whitespace-nowrap text-sm text-amethyst">
+                                {% if account.normal_balance == 'Debit' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    Debit
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    Kredit
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="border border-amethyst-light px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button onclick="editAccount('{{ account.id }}')" class="text-blue-600 hover:text-blue-900 mr-3">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% if account.is_active %}
+                                <button onclick="toggleAccount('{{ account.id }}', false)" class="text-red-600 hover:text-red-900">
+                                    <i class="fas fa-ban"></i>
+                                </button>
+                                {% else %}
+                                <button onclick="toggleAccount('{{ account.id }}', true)" class="text-green-600 hover:text-green-900">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="mt-6 p-4 bg-amethyst-light rounded-xl border border-amethyst-border">
+            <div class="text-sm text-amethyst-dark">
+                Menampilkan <span class="font-semibold text-amethyst-dark">{{ accounts|length }}</span> akun
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Account Modal -->
+<div id="accountModal" class="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-10 mx-auto p-5 w-full max-w-md">
+        <div class="bg-white rounded-2xl shadow-2xl border border-amethyst-border">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center p-6 border-b border-amethyst-light bg-amethyst-light rounded-t-2xl">
+                <h3 class="text-lg font-medium text-amethyst-dark" id="modalTitle">Tambah Akun Baru</h3>
+                <button onclick="closeAccountModal()" class="text-amethyst hover:text-amethyst-dark">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- Modal Body -->
+            <form id="accountForm" method="POST">
+                <input type="hidden" name="account_id" id="account_id">
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-amethyst-dark">Kode Akun *</label>
+                        <input type="text" name="account_code" id="account_code" required 
+                               class="mt-1 block w-full rounded-xl border-amethyst-border shadow-sm focus:border-amethyst focus:ring-amethyst bg-white transition-all duration-300 px-4 py-3">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-amethyst-dark">Nama Akun *</label>
+                        <input type="text" name="account_name" id="account_name" required 
+                               class="mt-1 block w-full rounded-xl border-amethyst-border shadow-sm focus:border-amethyst focus:ring-amethyst bg-white transition-all duration-300 px-4 py-3">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-amethyst-dark">Tipe Akun *</label>
+                        <select name="account_type" id="account_type" required 
+                                class="mt-1 block w-full rounded-xl border-amethyst-border shadow-sm focus:border-amethyst focus:ring-amethyst bg-white transition-all duration-300 px-4 py-3">
+                            <option value="">Pilih Tipe Akun</option>
+                            <option value="Aset">Aset</option>
+                            <option value="Aset Kontra">Aset Kontra</option>
+                            <option value="Liabilitas">Liabilitas</option>
+                            <option value="Ekuitas">Ekuitas</option>
+                            <option value="Pendapatan">Pendapatan</option>
+                            <option value="Beban">Beban</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-amethyst-dark">Kategori *</label>
+                        <input type="text" name="category" id="category" required 
+                               class="mt-1 block w-full rounded-xl border-amethyst-border shadow-sm focus:border-amethyst focus:ring-amethyst bg-white transition-all duration-300 px-4 py-3"
+                               placeholder="Contoh: Kas & Bank, Persediaan, Modal">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-amethyst-dark">Saldo Normal *</label>
+                        <select name="normal_balance" id="normal_balance" required 
+                                class="mt-1 block w-full rounded-xl border-amethyst-border shadow-sm focus:border-amethyst focus:ring-amethyst bg-white transition-all duration-300 px-4 py-3">
+                            <option value="">Pilih Saldo Normal</option>
+                            <option value="Debit">Debit</option>
+                            <option value="Kredit">Kredit</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-amethyst-dark">Deskripsi</label>
+                        <textarea name="description" id="description" rows="3"
+                                  class="mt-1 block w-full rounded-xl border-amethyst-border shadow-sm focus:border-amethyst focus:ring-amethyst bg-white transition-all duration-300 px-4 py-3 resize-none"></textarea>
+                    </div>
+                </div>
+                
+                <!-- Modal Footer -->
+                <div class="flex justify-end gap-3 p-6 border-t border-amethyst-light bg-amethyst-light rounded-b-2xl">
+                    <button type="button" onclick="closeAccountModal()" 
+                            class="px-4 py-2 text-sm font-medium text-amethyst-dark bg-white border border-amethyst-border hover:bg-amethyst-light rounded-xl transition-all duration-300">
+                        Batal
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 text-sm font-medium text-white bg-amethyst hover:bg-amethyst-dark rounded-xl transition-all duration-300">
+                        Simpan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Custom styling untuk konsistensi tema amethyst */
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239966CB' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(to bottom, #9966CB, #b19cd9);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(to bottom, #8a5bb5, #9f8cba);
+}
+
+/* Smooth transitions */
+input, select, textarea, button {
+    transition: all 0.3s ease;
+}
+
+/* Focus states */
+input:focus, select:focus, textarea:focus {
+    box-shadow: 0 0 0 3px rgba(153, 102, 203, 0.1);
+    border-color: #9966CB;
+}
+
+/* Table styling improvements */
+table {
+    border-collapse: collapse;
+}
+
+th, td {
+    border: 1px solid #d9cde6;
+}
+
+th {
+    background-color: #b564c7 !important;
+}
+
+/* Amethyst color definitions */
+.bg-amethyst {
+    background-color: #9966CB;
+}
+
+.bg-amethyst-dark {
+    background-color: #7a52a3;
+}
+
+.bg-amethyst-light {
+    background-color: #f0eaf8;
+}
+
+.border-amethyst {
+    border-color: #9966CB;
+}
+
+.border-amethyst-dark {
+    border-color: #7a52a3;
+}
+
+.border-amethyst-light {
+    border-color: #e6dbf2;
+}
+
+.border-amethyst-border {
+    border-color: #d9cde6;
+}
+
+.text-amethyst {
+    color: #9966CB;
+}
+
+.text-amethyst-dark {
+    color: #7a52a3;
+}
+
+.divide-amethyst-light > * + * {
+    border-color: #e6dbf2;
+}
+
+/* Responsive grid untuk stats cards */
+@media (max-width: 768px) {
+    .grid-cols-5 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .grid-cols-5 {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<script>
+// Modal Functions
+function openAddAccountModal() {
+    document.getElementById('accountModal').classList.remove('hidden');
+    document.getElementById('modalTitle').textContent = 'Tambah Akun Baru';
+    document.getElementById('accountForm').reset();
+    document.getElementById('accountForm').action = "{{ url_for('add_account') }}";
+    document.getElementById('account_id').value = '';
+}
+
+function openEditAccountModal(accountId) {
+    // Fetch account data from server
+    fetch(`/accounts/${accountId}/edit`)
+        .then(response => response.json())
+        .then(account => {
+            // Populate form fields with account data
+            document.getElementById('account_id').value = account.id;
+            document.getElementById('account_code').value = account.account_code;
+            document.getElementById('account_name').value = account.account_name;
+            document.getElementById('account_type').value = account.account_type;
+            document.getElementById('category').value = account.category;
+            document.getElementById('normal_balance').value = account.normal_balance;
+            document.getElementById('description').value = account.description || '';
+            
+            // Update modal title and form action
+            document.getElementById('modalTitle').textContent = 'Edit Akun';
+            document.getElementById('accountForm').action = "{{ url_for('edit_account') }}";
+            
+            // Show modal
+            document.getElementById('accountModal').classList.remove('hidden');
+        })
+        .catch(error => {
+            console.error('Error fetching account data:', error);
+            alert('Gagal memuat data akun');
+        });
+}
+
+function closeAccountModal() {
+    document.getElementById('accountModal').classList.add('hidden');
+}
+
+// Search and Filter
+document.getElementById('searchInput').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('.account-row');
+    
+    rows.forEach(row => {
+        const accountName = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+        const accountCode = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        if (accountName.includes(searchTerm) || accountCode.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+document.getElementById('typeFilter').addEventListener('change', function(e) {
+    const selectedType = e.target.value;
+    const rows = document.querySelectorAll('.account-row');
+    
+    rows.forEach(row => {
+        const accountType = row.getAttribute('data-type');
+        if (!selectedType || accountType === selectedType) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+// Account Management Functions
+function editAccount(accountId) {
+    openEditAccountModal(accountId);
+}
+
+function toggleAccount(accountId, activate) {
+    if (confirm(activate ? 'Aktifkan akun ini?' : 'Non-aktifkan akun ini?')) {
+        fetch(`/accounts/${accountId}/toggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Gagal mengubah status akun');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Terjadi kesalahan');
+        });
+    }
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('accountModal');
+    if (event.target === modal) {
+        closeAccountModal();
+    }
+}
+
+// Form submission handling
+document.getElementById('accountForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const action = this.action;
+    
+    fetch(action, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeAccountModal();
+            location.reload();
+        } else {
+            alert(data.message || 'Terjadi kesalahan saat menyimpan data');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Terjadi kesalahan saat menyimpan data');
+    });
+});
+</script>
+{% endblock %}

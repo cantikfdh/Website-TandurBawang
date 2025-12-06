@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Tandur Bawang - Sistem Akuntansi{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        @keyframes soft-bounce {
+            0%, 100% { 
+                transform: translateY(0); 
+            }
+            50% { 
+                transform: translateY(-8px); 
+            }
+        }
+        
+        @keyframes light-trail {
+            0% {
+                text-shadow: 
+                    0 0 5px #fff,
+                    0 0 10px #C576F6,
+                    0 0 15px #C576F6,
+                    0 0 20px #C576F6;
+                transform: translateY(0) scale(1);
+            }
+            25% {
+                text-shadow: 
+                    0 0 8px #fff,
+                    0 0 16px #C576F6,
+                    0 0 24px #C576F6,
+                    0 0 32px #C576F6;
+                transform: translateY(-2px) scale(1.05);
+            }
+            50% {
+                text-shadow: 
+                    0 0 12px #fff,
+                    0 0 24px #C576F6,
+                    0 0 36px #C576F6,
+                    0 0 48px #C576F6;
+                transform: translateY(-4px) scale(1.1);
+            }
+            75% {
+                text-shadow: 
+                    0 0 8px #fff,
+                    0 0 16px #C576F6,
+                    0 0 24px #C576F6,
+                    0 0 32px #C576F6;
+                transform: translateY(-2px) scale(1.05);
+            }
+            100% {
+                text-shadow: 
+                    0 0 5px #fff,
+                    0 0 10px #C576F6,
+                    0 0 15px #C576F6,
+                    0 0 20px #C576F6;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        @keyframes particle-drop {
+            0% {
+                transform: translateY(-20px) rotate(0deg);
+                opacity: 1;
+            }
+            80% {
+                opacity: 0.8;
+            }
+            100% {
+                transform: translateY(40px) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        .bawang-anim {
+            animation: 
+                soft-bounce 2s infinite ease-in-out,
+                light-trail 2s infinite ease-in-out;
+            position: relative;
+            display: inline-block;
+        }
+
+        /* Particle effects */
+        .bawang-anim::before,
+        .bawang-anim::after {
+            content: '✨';
+            position: absolute;
+            font-size: 8px;
+            opacity: 0;
+        }
+
+        .bawang-anim::before {
+            top: -5px;
+            left: 5px;
+            animation: particle-drop 2s infinite ease-in-out;
+        }
+
+        .bawang-anim::after {
+            top: -5px;
+            right: 5px;
+            animation: particle-drop 2s infinite ease-in-out 0.5s;
+        }
+
+        * {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .layout {
+            display: flex;
+            height: 100vh;
+            background: #fafafa;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: #C576F6;
+            border-right: 1px solid #b15fe5;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 2px solid #b15fe5;
+            background: #C576F6;
+        }
+
+        .menu-section {
+            margin-bottom: 10px;
+        }
+
+        .section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 15px 25px 8px 25px;
+            margin-bottom: 5px;
+            opacity: 0.9;
+        }
+
+        .menu-item {
+            padding: 12px 25px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-radius: 8px;
+            margin: 2px 15px;
+            color: white;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            border: none;
+            background: none;
+            width: calc(100% - 30px);
+            text-align: left;
+            text-decoration: none;
+            opacity: 0.9;
+        }
+
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateX(3px);
+            opacity: 1;
+        }
+
+        .menu-item.active {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(255, 255, 255, 0.1);
+            opacity: 1;
+        }
+
+        .menu-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: white;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .menu-item:hover .menu-icon {
+            transform: scale(1.1);
+        }
+
+        .menu-item.active .menu-icon {
+            transform: scale(1.1);
+            box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3);
+        }
+
+        .menu-text {
+            flex: 1;
+            font-weight: 600;
+        }
+
+        .content-area {
+            flex: 1;
+            padding: 0;
+            overflow-y: auto;
+            background: white;
+            min-height: 100vh;
+        }
+
+        /* Flash messages */
+        .flash-messages {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .flash-success {
+            background: #10b981;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .flash-error {
+            background: #ef4444;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .flash-info {
+            background: #3b82f6;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Scrollbar styling */
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .content-area::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .content-area::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .content-area::-webkit-scrollbar-thumb {
+            background: #d4b3e8;
+            border-radius: 4px;
+        }
+
+        .content-area::-webkit-scrollbar-thumb:hover {
+            background: #C576F6;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-gradient-to-b from-purple-300 to-purple-500">
+    
+    {% if current_user.is_authenticated %}
+    <!-- DASHBOARD LAYOUT -->
+    <div class="layout">
+        <!-- SIDEBAR MENU -->
+        <div class="sidebar">
+            <!-- Header Sidebar -->
+            <div class="sidebar-header">
+                <div class="flex items-center gap-2 font-bold text-white text-lg">
+                    <span class="text-2xl bawang-anim">🧅</span>
+                    <span>Tandur Bawang</span>
+                </div>
+                <p class="text-xs text-white mt-1 opacity-90 font-semibold">Sistem Informasi Akuntansi TB</p>
+            </div>
+
+            <!-- Main Navigation -->
+            <div class="menu-section">
+                <div class="section-title">Navigasi Utama</div>
+                <a href="{{ url_for('dashboard') }}" class="menu-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    <span class="menu-icon">📊</span>
+                    <span class="menu-text">Dashboard</span>
+                </a>
+            </div>
+
+            <!-- SIKLUS AKUNTANSI -->
+            <div class="menu-section">
+                <div class="section-title">Siklus Akuntansi</div>
+                
+                <!-- Tahap 1: Pencatatan -->
+                <a href="{{ url_for('chart_of_accounts') }}" class="menu-item {% if request.endpoint == 'chart_of_accounts' %}active{% endif %}">
+                    <span class="menu-icon">📋</span>
+                    <span class="menu-text">Chart of Accounts</span>
+                </a>
+                <a href="{{ url_for('transactions') }}" class="menu-item {% if request.endpoint == 'transactions' %}active{% endif %}">
+                    <span class="menu-icon">💳</span>
+                    <span class="menu-text">Transactions</span>
+                </a>
+                <a href="{{ url_for('general_journal') }}" class="menu-item {% if request.endpoint == 'general_journal' %}active{% endif %}">
+                    <span class="menu-icon">📒</span>
+                    <span class="menu-text">General Journal</span>
+                </a>
+                <a href="{{ url_for('general_ledger') }}" class="menu-item {% if request.endpoint == 'general_ledger' %}active{% endif %}">
+                    <span class="menu-icon">📂</span>
+                    <span class="menu-text">General Ledger</span>
+                </a>
+
+                <!-- Tahap 2: Penyesuaian -->
+                <a href="{{ url_for('trial_balance') }}" class="menu-item {% if request.endpoint == 'trial_balance' %}active{% endif %}">
+                    <span class="menu-icon">⚖️</span>
+                    <span class="menu-text">Trial Balance</span>
+                </a>
+                <a href="{{ url_for('adjusting_entries') }}" class="menu-item {% if request.endpoint == 'adjusting_entries' %}active{% endif %}">
+                    <span class="menu-icon">🛠️</span>
+                    <span class="menu-text">Adjusting Entries</span>
+                </a>
+                <a href="{{ url_for('adjusted_trial_balance') }}" class="menu-item {% if request.endpoint == 'adjusted_trial_balance' %}active{% endif %}">
+                    <span class="menu-icon">📊</span>
+                    <span class="menu-text">Adjusted Trial Balance</span>
+                </a>
+
+                <!-- Tahap 3: Pelaporan -->
+                <a href="{{ url_for('financial_statements') }}" class="menu-item {% if request.endpoint == 'financial_statements' %}active{% endif %}">
+                    <span class="menu-icon">📈</span>
+                    <span class="menu-text">Financial Statements</span>
+                </a>
+
+                <!-- Tahap 4: Penutupan -->
+                <a href="{{ url_for('closing_entries') }}" class="menu-item {% if request.endpoint == 'closing_entries' %}active{% endif %}">
+                    <span class="menu-icon">🔒</span>
+                    <span class="menu-text">Closing Entries</span>
+                </a>
+                <a href="{{ url_for('post_closing_trial_balance') }}" class="menu-item {% if request.endpoint == 'post_closing_trial_balance' %}active{% endif %}">
+                    <span class="menu-icon">✅</span>
+                    <span class="menu-text">Post-Closing Trial Balance</span>
+                </a>
+            </div>
+
+            <!-- User Menu -->
+            <div class="menu-section" style="margin-top: auto;">
+                <div class="section-title">Akun</div>
+                <a href="{{ url_for('logout') }}" class="menu-item">
+                    <span class="menu-icon">🚪</span>
+                    <span class="menu-text">Logout</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- CONTENT AREA -->
+        <div class="content-area">
+            <!-- Flash Messages for Authenticated Users -->
+            <div class="flash-messages">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="flash-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+            
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    {% else %}
+    <!-- PUBLIC LAYOUT (Login/Register) -->
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <!-- Flash Messages for Public Pages -->
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
+        {% block public_content %}{% endblock %}
+    </div>
+    {% endif %}
+
+    <script>
+        // Auto-hide flash messages after 5 seconds
+        setTimeout(() => {
+            const flashMessages = document.querySelectorAll('.flash-success, .flash-error, .flash-info');
+            flashMessages.forEach(message => {
+                message.style.transition = 'opacity 0.5s ease';
+                message.style.opacity = '0';
+                setTimeout(() => message.remove(), 500);
+            });
+        }, 5000);
+
+        // Set active menu item based on current URL
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentPath = window.location.pathname;
+            const menuItems = document.querySelectorAll('.menu-item');
+            
+            menuItems.forEach(item => {
+                if (item.getAttribute('href') === currentPath) {
+                    item.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
