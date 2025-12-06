@@ -293,7 +293,7 @@ class FinancialStatement:
             'hpp': total_hpp,
             'gross_profit': gross_profit,
             'operating_expenses': operating_expenses_detailed['total'],
-            'operating_expenses_detailed': operating_expenses_detailed,
+            'operating_expenses_demicalled': operating_expenses_detailed,
             'net_income': net_income_before_tax
         }
         
@@ -623,7 +623,14 @@ def load_user(user_id):
 def index():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
-    return render_template('index.html')
+    
+    # Pastikan path gambar benar - gunanakan url_for untuk static files
+    background_image = url_for('static', filename='staticimages/background.jpeg')
+    logo_image = url_for('static', filename='staticimages/LOGO 1 (1).png')
+    
+    return render_template('index.html', 
+                         background_image=background_image,
+                         logo_image=logo_image)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -771,6 +778,9 @@ def dashboard():
         print(f"Error calculating financial data: {e}")
         # Tetap lanjut dengan data default
     
+    # Tambahkan logo image untuk dashboard
+    logo_image = url_for('static', filename='staticimages/LOGO 1 (1).png')
+    
     return render_template('dashboard.html', 
                          total_accounts=total_accounts,
                          total_transactions=total_transactions,
@@ -778,7 +788,8 @@ def dashboard():
                          recent_transactions=recent_transactions,
                          income_statement=income_statement,
                          balance_sheet=balance_sheet,
-                         net_income=net_income)
+                         net_income=net_income,
+                         logo_image=logo_image)
 
 # CHART OF ACCOUNTS ROUTES
 @app.route('/chart_of_accounts')
@@ -1603,14 +1614,11 @@ def create_app():
 port = int(os.environ.get("PORT", 8080))
 
 if __name__ == '__main__':
-    # Initialize database
     init_db()
     
-    # Untuk local development
     if os.environ.get('RENDER'):
         # Run di Render dengan host 0.0.0.0
         app.run(host='0.0.0.0', port=port, debug=False)
     else:
         # Run di local dengan debug mode
         app.run(host='0.0.0.0', port=8080, debug=True)
-
