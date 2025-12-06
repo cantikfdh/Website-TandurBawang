@@ -1596,6 +1596,27 @@ def init_db():
             db.session.commit()
             print("Default accounts created successfully!")
 
+# ==========================================
+# 🔥 KODE KHUSUS UNTUK RENDER.COM DEPLOYMENT
+# ==========================================
+
+import os
+
+def create_app():
+    """Function untuk create app yang diperlukan Render"""
+    return app
+
+# PORT untuk Render (WAJIB)
+port = int(os.environ.get("PORT", 8080))
+
 if __name__ == '__main__':
+    # Initialize database
     init_db()
-    app.run(debug=True)
+    
+    # Untuk local development
+    if os.environ.get('RENDER'):
+        # Run di Render dengan host 0.0.0.0
+        app.run(host='0.0.0.0', port=port, debug=False)
+    else:
+        # Run di local dengan debug mode
+        app.run(host='0.0.0.0', port=8080, debug=True)
