@@ -36,15 +36,12 @@
                 </div>
             </div>
             <div class="flex items-center justify-center">
-                <!-- Image dengan lingkaran putih di belakang (diperbesar) -->
+                <!-- Logo dari static folder -->
                 <div class="relative">
-                    <div class="w-60 h-60 bg-white rounded-full flex items-center justify-center shadow-lg">
-                        <div class="w-56 h-56 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
-                            <!-- Preview gambar dari upload -->
-                            <img id="profile-preview" class="w-full h-full object-cover hidden" src="" alt="Logo Tandur Bawang">
-                            <!-- Placeholder jika belum ada gambar -->
-                            <i id="profile-placeholder" class="fas fa-building text-gray-400 text-5xl"></i>
-                        </div>
+                    <div class="w-60 h-60 bg-white rounded-full flex items-center justify-center shadow-lg overflow-hidden">
+                        <img src="{{ url_for('static', filename='staticimages/LOGO 1 (1).png') }}" 
+                             alt="Logo Tandur Bawang" 
+                             class="w-full h-full object-contain p-2">
                     </div>
                 </div>
             </div>
@@ -245,32 +242,11 @@
             </div>
         </div>
     </div>
-
-    <!-- Opsi Upload Logo -->
-    <div class="bg-white rounded-lg shadow p-4">
-        <h3 class="text-lg font-semibold text-purple-900 mb-3">Upload Logo Perusahaan</h3>
-        <div class="flex flex-col items-center space-y-4">
-            <!-- Upload Button -->
-            <label class="bg-purple-600 text-white px-6 py-3 rounded-lg text-sm font-medium cursor-pointer hover:bg-purple-700 transition-colors">
-                <i class="fas fa-upload mr-2"></i>
-                Pilih Logo
-                <input id="company-logo" type="file" class="hidden" accept="image/*" />
-            </label>
-            
-            <p class="text-xs text-gray-500 text-center">
-                Logo akan ditampilkan di profil perusahaan<br>
-                Format: PNG, JPG, GIF • Maksimal: 2MB
-            </p>
-        </div>
-    </div>
 </div>
 
-<!-- JavaScript untuk Upload Gambar dan Penyimpanan -->
+<!-- JavaScript untuk Penyimpanan -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const fileInput = document.getElementById('company-logo');
-    const profilePreview = document.getElementById('profile-preview');
-    const profilePlaceholder = document.getElementById('profile-placeholder');
     const refreshIncomeBtn = document.getElementById('refresh-income-statement');
     const refreshBalanceBtn = document.getElementById('refresh-balance-sheet');
     const refreshEquityBtn = document.getElementById('refresh-equity-statement');
@@ -433,75 +409,6 @@ document.addEventListener('DOMContentLoaded', function() {
     refreshIncomeBtn.addEventListener('click', refreshFinancialData);
     refreshBalanceBtn.addEventListener('click', refreshFinancialData);
     refreshEquityBtn.addEventListener('click', refreshFinancialData);
-
-    // Cek apakah ada logo yang tersimpan di localStorage
-    function loadSavedLogo() {
-        const savedLogo = localStorage.getItem('tandurBawangLogo');
-        if (savedLogo) {
-            profilePreview.src = savedLogo;
-            profilePreview.classList.remove('hidden');
-            profilePlaceholder.classList.add('hidden');
-        } else {
-            profilePreview.classList.add('hidden');
-            profilePlaceholder.classList.remove('hidden');
-        }
-    }
-
-    // Simpan logo ke localStorage
-    function saveLogoToStorage(imageData) {
-        localStorage.setItem('tandurBawangLogo', imageData);
-    }
-
-    // Hapus logo dari localStorage
-    function removeLogoFromStorage() {
-        localStorage.removeItem('tandurBawangLogo');
-    }
-
-    // Load logo yang tersimpan saat halaman dimuat
-    loadSavedLogo();
-
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            // Validasi ukuran file (max 2MB)
-            if (file.size > 2 * 1024 * 1024) {
-                alert('Ukuran file maksimal 2MB');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const imageData = e.target.result;
-                profilePreview.src = imageData;
-                profilePreview.classList.remove('hidden');
-                profilePlaceholder.classList.add('hidden');
-                
-                // Simpan ke localStorage
-                saveLogoToStorage(imageData);
-            }
-            reader.readAsDataURL(file);
-        }
-    });
-
-    // Klik pada preview gambar untuk mengganti
-    profilePreview.addEventListener('click', function() {
-        fileInput.click();
-    });
-
-    // Klik pada placeholder untuk upload
-    profilePlaceholder.addEventListener('click', function() {
-        fileInput.click();
-    });
-
-    // Optional: Tambahkan konfirmasi hapus logo dengan klik kanan
-    profilePreview.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        if (confirm('Hapus logo?')) {
-            profilePreview.classList.add('hidden');
-            profilePlaceholder.classList.remove('hidden');
-            removeLogoFromStorage();
-        }
-    });
 
     // Auto-refresh financial data setiap 30 detik
     setInterval(refreshFinancialData, 30000);
