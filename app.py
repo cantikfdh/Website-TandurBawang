@@ -28,6 +28,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # ==========================================================================
 
 db = SQLAlchemy(app)
+with app.app_context():
+    db.create_all()
+    print(f"Database initialized: {app.config['SQLALCHEMY_DATABASE_URI']}")
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -1542,6 +1545,14 @@ def init_db():
             
             db.session.commit()
             print("Default accounts created successfully!")
+
+@app.route('/test-db')
+def test_db():
+    try:
+        db.session.execute('SELECT 1')
+        return "Database connection OK"
+    except Exception as e:
+        return f"Database error: {str(e)}"
 
 if __name__ == '__main__':
     init_db()
