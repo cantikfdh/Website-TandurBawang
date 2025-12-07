@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 import csv
 import io
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, func
 
 # Inisialisasi ekstensi di luar factory function
 db = SQLAlchemy()
@@ -122,6 +122,8 @@ def create_default_accounts_if_needed():
                 {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
                 {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
                 {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
+                {'code': '2101', 'name': 'Utang Usaha', 'type': 'Liabilitas', 'category': 'Utang Lancar', 'normal_balance': 'Kredit'},
+                {'code': '2102', 'name': 'Utang Bank', 'type': 'Liabilitas', 'category': 'Utang Jangka Panjang', 'normal_balance': 'Kredit'},
                 {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
                 {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
                 {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
@@ -133,6 +135,8 @@ def create_default_accounts_if_needed():
                 {'code': '5202', 'name': 'Beban Tenaga Kerja', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
                 {'code': '5203', 'name': 'Beban Sewa', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
                 {'code': '5204', 'name': 'Beban Perbaikan', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+                {'code': '5205', 'name': 'Beban Listrik dan Air', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+                {'code': '5206', 'name': 'Beban Administrasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
                 {'code': '5301', 'name': 'Beban Penyusutan', 'type': 'Beban', 'category': 'Beban Non-Operasional', 'normal_balance': 'Debit'}
             ]
             
@@ -199,15 +203,40 @@ class Account(db.Model):
             'description': self.description,
             'is_active': self.is_active
         }
+    
+    def get_balance(self, include_adjusting=True, include_closing=True):
+        """Get current balance for this account"""
+        from datetime import datetime
+        query = db.session.query(
+            func.sum(JournalEntry.debit).label('total_debit'),
+            func.sum(JournalEntry.credit).label('total_credit')
+        ).filter(JournalEntry.account_code == self.account_code)
+        
+        if not include_adjusting:
+            query = query.filter(JournalEntry.entry_type == 'regular')
+        if not include_closing:
+            query = query.filter(JournalEntry.entry_type != 'closing')
+        
+        result = query.first()
+        total_debit = result.total_debit or 0
+        total_credit = result.total_credit or 0
+        
+        if self.normal_balance == 'Debit':
+            return total_debit - total_credit
+        else:
+            return total_credit - total_debit
 
 class Transaction(db.Model):
     __tablename__ = 'transactions'
     
     id = db.Column(db.Integer, primary_key=True)
+    transaction_number = db.Column(db.String(50), unique=True, nullable=False)
     date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     description = db.Column(db.String(500), nullable=False)
     account_debit = db.Column(db.String(20), nullable=False)
+    account_debit_name = db.Column(db.String(200), nullable=False)
     account_credit = db.Column(db.String(20), nullable=False)
+    account_credit_name = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     reference = db.Column(db.String(100))
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -228,14 +257,16 @@ class JournalEntry(db.Model):
     reference = db.Column(db.String(100))
     transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'))
     adjusting_entry_id = db.Column(db.Integer, db.ForeignKey('adjusting_entries.id'))
+    closing_entry_id = db.Column(db.Integer, db.ForeignKey('closing_entries.id'))
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    entry_type = db.Column(db.String(20), default='regular')
+    entry_type = db.Column(db.String(20), default='regular')  # regular, adjusting, closing
     ledger_processed = db.Column(db.Boolean, default=True)
     ledger_date = db.Column(db.DateTime, default=datetime.utcnow)
     
     transaction = db.relationship('Transaction', backref=db.backref('journal_entries', lazy=True))
     adjusting_entry = db.relationship('AdjustingEntry', backref=db.backref('journal_entries', lazy=True))
+    closing_entry = db.relationship('ClosingEntry', backref=db.backref('journal_entries', lazy=True))
     user = db.relationship('User', backref=db.backref('journal_entries', lazy=True))
 
 class AdjustingEntry(db.Model):
@@ -253,6 +284,7 @@ class AdjustingEntry(db.Model):
     adjustment_type = db.Column(db.String(100))
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    posted_to_ledger = db.Column(db.Boolean, default=True)
     
     user = db.relationship('User', backref=db.backref('adjusting_entries', lazy=True))
 
@@ -271,6 +303,7 @@ class ClosingEntry(db.Model):
     entry_type = db.Column(db.String(100))
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    posted_to_ledger = db.Column(db.Boolean, default=True)
     
     user = db.relationship('User', backref=db.backref('closing_entries', lazy=True))
 
@@ -296,7 +329,8 @@ class LedgerProcessor:
     def __init__(self, user_id):
         self.user_id = user_id
     
-    def get_ledger_entries(self, account_code=None, start_date=None, end_date=None, include_adjusting=True):
+    def get_ledger_entries(self, account_code=None, start_date=None, end_date=None, 
+                          include_adjusting=True, include_closing=True):
         """Get ledger entries with running balance"""
         query = JournalEntry.query.filter_by(
             created_by=self.user_id,
@@ -313,7 +347,10 @@ class LedgerProcessor:
             query = query.filter(JournalEntry.date <= end_date)
         
         if not include_adjusting:
-            query = query.filter(JournalEntry.entry_type == 'regular')
+            query = query.filter(JournalEntry.entry_type != 'adjusting')
+        
+        if not include_closing:
+            query = query.filter(JournalEntry.entry_type != 'closing')
         
         entries = query.order_by(JournalEntry.date, JournalEntry.id).all()
         
@@ -335,20 +372,23 @@ class LedgerProcessor:
         
         return ledger_data
 
-    def get_account_balance(self, account_code, include_adjusting=True):
+    def get_account_balance(self, account_code, include_adjusting=True, include_closing=True):
         """Get current balance for specific account"""
-        entries = self.get_ledger_entries(account_code, include_adjusting=include_adjusting)
+        entries = self.get_ledger_entries(account_code, 
+                                         include_adjusting=include_adjusting,
+                                         include_closing=include_closing)
         if entries:
             return entries[-1]['running_balance']
         return 0
 
 class TrialBalance:
-    def __init__(self, period=None, include_adjusting=True):
+    def __init__(self, period=None, include_adjusting=True, include_closing=False):
         self.period = period or datetime.now().strftime('%B %Y')
         self.accounts_data = []
         self.total_debit = 0
         self.total_credit = 0
         self.include_adjusting = include_adjusting
+        self.include_closing = include_closing
         
     def add_account_balance(self, account, debit, credit):
         self.accounts_data.append({
@@ -406,6 +446,8 @@ class FinancialStatement:
             'beban_sewa': 0,
             'beban_perbaikan': 0,
             'beban_penyusutan': 0,
+            'beban_listrik_air': 0,
+            'beban_administrasi': 0,
             'beban_lain_lain': 0,
             'total': 0
         }
@@ -426,6 +468,10 @@ class FinancialStatement:
                 operating_expenses_detailed['beban_sewa'] = amount
             elif account_code == '5204':
                 operating_expenses_detailed['beban_perbaikan'] = amount
+            elif account_code == '5205':
+                operating_expenses_detailed['beban_listrik_air'] = amount
+            elif account_code == '5206':
+                operating_expenses_detailed['beban_administrasi'] = amount
             elif account_code == '5301':
                 operating_expenses_detailed['beban_penyusutan'] = amount
             else:
@@ -437,6 +483,8 @@ class FinancialStatement:
             operating_expenses_detailed['beban_sewa'],
             operating_expenses_detailed['beban_perbaikan'],
             operating_expenses_detailed['beban_penyusutan'],
+            operating_expenses_detailed['beban_listrik_air'],
+            operating_expenses_detailed['beban_administrasi'],
             operating_expenses_detailed['beban_lain_lain']
         ])
         
@@ -487,13 +535,16 @@ class FinancialStatement:
         total_liabilities = sum(item['credit'] - item['debit'] for item in liability_accounts)
         
         utang_usaha = 0
-        utang_lainnya = 0
+        utang_bank = 0
         
         for item in liability_accounts:
             amount = item['credit'] - item['debit']
-            if utang_usaha == 0:
-                utang_usaha = amount * 0.6
-                utang_lainnya = amount * 0.4
+            account_code = item['account'].account_code
+            
+            if account_code == '2101':
+                utang_usaha = amount
+            elif account_code == '2102':
+                utang_bank = amount
         
         equity_accounts = trial_balance.get_accounts_by_type('Ekuitas')
         initial_equity = 0
@@ -521,7 +572,7 @@ class FinancialStatement:
             },
             'liabilities_detailed': {
                 'utang_usaha': utang_usaha,
-                'utang_lainnya': utang_lainnya
+                'utang_bank': utang_bank
             }
         }
         
@@ -541,14 +592,16 @@ class ClosingProcessor:
         self.reference_counter += 1
         return unique_ref
         
-    def get_adjusted_trial_balance_data(self):
+    def get_adjusted_trial_balance_data(self, include_closing=False):
         ledger_processor = LedgerProcessor(self.user_id)
         accounts = Account.query.filter_by(is_active=True).all()
         
         trial_balance_data = []
         
         for account in accounts:
-            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+            balance = ledger_processor.get_account_balance(account.account_code, 
+                                                          include_adjusting=True,
+                                                          include_closing=include_closing)
             
             if account.normal_balance == 'Debit':
                 if balance >= 0:
@@ -579,10 +632,10 @@ class ClosingProcessor:
         
         return trial_balance_data
     
-    def get_income_statement_data(self):
-        trial_balance_data = self.get_adjusted_trial_balance_data()
+    def get_income_statement_data(self, include_closing=False):
+        trial_balance_data = self.get_adjusted_trial_balance_data(include_closing=include_closing)
         
-        trial_balance_obj = TrialBalance(include_adjusting=True)
+        trial_balance_obj = TrialBalance(include_adjusting=True, include_closing=include_closing)
         for item in trial_balance_data:
             trial_balance_obj.add_account_balance(item['account'], item['debit'], item['credit'])
         
@@ -594,9 +647,10 @@ class ClosingProcessor:
     def generate_closing_entries(self):
         self.closing_entries = []
         
-        trial_balance_data = self.get_adjusted_trial_balance_data()
-        self.net_income = self.get_income_statement_data()
+        trial_balance_data = self.get_adjusted_trial_balance_data(include_closing=False)
+        self.net_income = self.get_income_statement_data(include_closing=False)
         
+        # Close revenue accounts to Income Summary
         revenue_accounts = [item for item in trial_balance_data 
                           if item['account'].account_type == 'Pendapatan' and item['credit'] > 0]
         
@@ -611,10 +665,12 @@ class ClosingProcessor:
                 account_credit_name='Ikhtisar Laba Rugi',
                 amount=item['credit'],
                 entry_type='Pendapatan',
-                created_by=self.user_id
+                created_by=self.user_id,
+                posted_to_ledger=True
             )
             self.closing_entries.append(entry)
         
+        # Close expense accounts to Income Summary
         expense_accounts = [item for item in trial_balance_data 
                           if item['account'].account_type == 'Beban' and item['debit'] > 0]
         
@@ -629,10 +685,12 @@ class ClosingProcessor:
                 account_credit_name=item['account'].account_name,
                 amount=item['debit'],
                 entry_type='Beban',
-                created_by=self.user_id
+                created_by=self.user_id,
+                posted_to_ledger=True
             )
             self.closing_entries.append(entry)
         
+        # Close HPP accounts to Income Summary
         hpp_accounts = [item for item in trial_balance_data 
                        if item['account'].account_code in ['5101', '5901'] and item['debit'] > 0]
         
@@ -647,10 +705,12 @@ class ClosingProcessor:
                 account_credit_name=item['account'].account_name,
                 amount=item['debit'],
                 entry_type='HPP',
-                created_by=self.user_id
+                created_by=self.user_id,
+                posted_to_ledger=True
             )
             self.closing_entries.append(entry)
         
+        # Close Income Summary to Capital (Net Income/Loss)
         if self.net_income != 0:
             if self.net_income > 0:
                 entry = ClosingEntry(
@@ -663,7 +723,8 @@ class ClosingProcessor:
                     account_credit_name='Modal Disetor',
                     amount=self.net_income,
                     entry_type='Laba Bersih',
-                    created_by=self.user_id
+                    created_by=self.user_id,
+                    posted_to_ledger=True
                 )
             else:
                 entry = ClosingEntry(
@@ -676,10 +737,12 @@ class ClosingProcessor:
                     account_credit_name='Ikhtisar Laba Rugi',
                     amount=abs(self.net_income),
                     entry_type='Rugi Bersih',
-                    created_by=self.user_id
+                    created_by=self.user_id,
+                    posted_to_ledger=True
                 )
             self.closing_entries.append(entry)
         
+        # Close Drawing accounts to Capital
         prive_accounts = [item for item in trial_balance_data 
                          if item['account'].account_code == '3102' and item['debit'] > 0]
         
@@ -694,7 +757,8 @@ class ClosingProcessor:
                 account_credit_name='Prive',
                 amount=item['debit'],
                 entry_type='Prive',
-                created_by=self.user_id
+                created_by=self.user_id,
+                posted_to_ledger=True
             )
             self.closing_entries.append(entry)
         
@@ -702,13 +766,54 @@ class ClosingProcessor:
     
     def save_closing_entries(self):
         try:
-            ClosingEntry.query.filter_by(created_by=self.user_id).delete()
+            # First, delete existing closing entries
+            existing_entries = ClosingEntry.query.filter_by(created_by=self.user_id).all()
+            for entry in existing_entries:
+                # Also delete associated journal entries
+                JournalEntry.query.filter_by(closing_entry_id=entry.id).delete()
+                db.session.delete(entry)
             
+            # Add new closing entries
             for entry in self.closing_entries:
                 db.session.add(entry)
+                db.session.flush()  # Get the entry ID
+                
+                # Create journal entries for closing
+                debit_journal = JournalEntry(
+                    date=entry.date,
+                    description=entry.description,
+                    account_code=entry.account_debit_code,
+                    account_name=entry.account_debit_name,
+                    debit=entry.amount,
+                    credit=0,
+                    reference=entry.reference,
+                    closing_entry_id=entry.id,
+                    created_by=self.user_id,
+                    entry_type='closing',
+                    ledger_processed=True,
+                    ledger_date=datetime.now()
+                )
+                
+                credit_journal = JournalEntry(
+                    date=entry.date,
+                    description=entry.description,
+                    account_code=entry.account_credit_code,
+                    account_name=entry.account_credit_name,
+                    debit=0,
+                    credit=entry.amount,
+                    reference=entry.reference,
+                    closing_entry_id=entry.id,
+                    created_by=self.user_id,
+                    entry_type='closing',
+                    ledger_processed=True,
+                    ledger_date=datetime.now()
+                )
+                
+                db.session.add(debit_journal)
+                db.session.add(credit_journal)
             
             db.session.commit()
-            return True, f"Berhasil menyimpan {len(self.closing_entries)} closing entries"
+            return True, f"Berhasil menyimpan {len(self.closing_entries)} closing entries dan jurnal terkait"
         except Exception as e:
             db.session.rollback()
             return False, f"Gagal menyimpan closing entries: {str(e)}"
@@ -871,7 +976,9 @@ def dashboard_financial_data():
         accounts = Account.query.filter_by(is_active=True).all()
         
         for account in accounts:
-            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+            balance = ledger_processor.get_account_balance(account.account_code, 
+                                                          include_adjusting=True,
+                                                          include_closing=False)
             
             if account.normal_balance == 'Debit':
                 if balance >= 0:
@@ -921,7 +1028,9 @@ def dashboard():
         accounts = Account.query.filter_by(is_active=True).all()
         
         for account in accounts:
-            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+            balance = ledger_processor.get_account_balance(account.account_code, 
+                                                          include_adjusting=True,
+                                                          include_closing=False)
             
             if account.normal_balance == 'Debit':
                 if balance >= 0:
@@ -984,7 +1093,8 @@ def add_account():
             account_type=account_type,
             category=category,
             normal_balance=normal_balance,
-            description=description
+            description=description,
+            is_active=True
         )
         
         db.session.add(new_account)
@@ -1060,15 +1170,17 @@ def toggle_account(account_id):
 @login_required
 def initialize_default_accounts():
     try:
-        existing_count = Account.query.count()
-        if existing_count > 0:
-            return jsonify({'success': False, 'message': 'Akun sudah ada di sistem'})
+        # Hapus semua akun yang ada
+        Account.query.delete()
+        db.session.commit()
         
         specific_accounts = [
             {'code': '1101', 'name': 'Kas', 'type': 'Aset', 'category': 'Kas & Bank', 'normal_balance': 'Debit'},
             {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
             {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
             {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
+            {'code': '2101', 'name': 'Utang Usaha', 'type': 'Liabilitas', 'category': 'Utang Lancar', 'normal_balance': 'Kredit'},
+            {'code': '2102', 'name': 'Utang Bank', 'type': 'Liabilitas', 'category': 'Utang Jangka Panjang', 'normal_balance': 'Kredit'},
             {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
             {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
             {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
@@ -1080,6 +1192,8 @@ def initialize_default_accounts():
             {'code': '5202', 'name': 'Beban Tenaga Kerja', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
             {'code': '5203', 'name': 'Beban Sewa', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
             {'code': '5204', 'name': 'Beban Perbaikan', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+            {'code': '5205', 'name': 'Beban Listrik dan Air', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+            {'code': '5206', 'name': 'Beban Administrasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
             {'code': '5301', 'name': 'Beban Penyusutan', 'type': 'Beban', 'category': 'Beban Non-Operasional', 'normal_balance': 'Debit'}
         ]
         
@@ -1095,7 +1209,7 @@ def initialize_default_accounts():
             db.session.add(account)
         
         db.session.commit()
-        return jsonify({'success': True, 'message': 'Akun default berhasil diinisialisasi!'})
+        return jsonify({'success': True, 'message': 'Akun default berhasil diinisialisasi ulang!'})
         
     except Exception as e:
         db.session.rollback()
@@ -1106,83 +1220,132 @@ def initialize_default_accounts():
 @login_required
 def transactions():
     if request.method == 'POST':
-        date = request.form.get('date')
-        description = request.form.get('description')
-        account_debit = request.form.get('account_debit')
-        account_credit = request.form.get('account_credit')
-        amount = request.form.get('amount')
-        
         try:
+            date = request.form.get('date')
+            description = request.form.get('description')
+            account_debit = request.form.get('account_debit')
+            account_credit = request.form.get('account_credit')
+            amount = request.form.get('amount')
+            reference = request.form.get('reference', '')
+            
+            # Validasi
+            if not all([date, description, account_debit, account_credit, amount]):
+                flash('Semua field harus diisi!', 'error')
+                return redirect(url_for('transactions'))
+            
             amount = float(amount)
             if amount <= 0:
                 flash('Jumlah harus lebih dari 0!', 'error')
                 return redirect(url_for('transactions'))
+            
+            if account_debit == account_credit:
+                flash('Akun debit dan kredit tidak boleh sama!', 'error')
+                return redirect(url_for('transactions'))
+            
+            # Cek akun
+            debit_account = Account.query.filter_by(account_code=account_debit).first()
+            credit_account = Account.query.filter_by(account_code=account_credit).first()
+            
+            if not debit_account or not credit_account:
+                flash('Akun debit atau kredit tidak valid!', 'error')
+                return redirect(url_for('transactions'))
+            
+            if not debit_account.is_active or not credit_account.is_active:
+                flash('Akun tidak aktif!', 'error')
+                return redirect(url_for('transactions'))
+            
+            # Generate transaction number
+            transaction_count = Transaction.query.filter_by(created_by=current_user.id).count() + 1
+            transaction_number = f"TRX-{datetime.now().strftime('%Y%m%d')}-{transaction_count:04d}"
+            
+            # Create transaction
+            new_transaction = Transaction(
+                transaction_number=transaction_number,
+                date=datetime.strptime(date, '%Y-%m-%d'),
+                description=description,
+                account_debit=account_debit,
+                account_debit_name=debit_account.account_name,
+                account_credit=account_credit,
+                account_credit_name=credit_account.account_name,
+                amount=amount,
+                reference=reference,
+                created_by=current_user.id
+            )
+            
+            db.session.add(new_transaction)
+            db.session.flush()  # Get the transaction ID
+            
+            # Create journal entries
+            debit_entry = JournalEntry(
+                date=new_transaction.date,
+                description=description,
+                account_code=account_debit,
+                account_name=debit_account.account_name,
+                debit=amount,
+                credit=0,
+                reference=transaction_number,
+                transaction_id=new_transaction.id,
+                created_by=current_user.id,
+                entry_type='regular',
+                ledger_processed=True,
+                ledger_date=datetime.now()
+            )
+            
+            credit_entry = JournalEntry(
+                date=new_transaction.date,
+                description=description,
+                account_code=account_credit,
+                account_name=credit_account.account_name,
+                debit=0,
+                credit=amount,
+                reference=transaction_number,
+                transaction_id=new_transaction.id,
+                created_by=current_user.id,
+                entry_type='regular',
+                ledger_processed=True,
+                ledger_date=datetime.now()
+            )
+            
+            db.session.add(debit_entry)
+            db.session.add(credit_entry)
+            db.session.commit()
+            
+            flash('Transaksi berhasil ditambahkan dan diproses ke ledger!', 'success')
+            return redirect(url_for('transactions'))
+            
         except ValueError:
             flash('Jumlah harus berupa angka!', 'error')
             return redirect(url_for('transactions'))
-        
-        if account_debit == account_credit:
-            flash('Akun debit dan kredit tidak boleh sama!', 'error')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Gagal menambahkan transaksi: {str(e)}', 'error')
             return redirect(url_for('transactions'))
-        
-        debit_account = Account.query.filter_by(account_code=account_debit).first()
-        credit_account = Account.query.filter_by(account_code=account_credit).first()
-        
-        if not debit_account or not credit_account:
-            flash('Akun debit atau kredit tidak valid!', 'error')
-            return redirect(url_for('transactions'))
-        
-        new_transaction = Transaction(
-            date=datetime.strptime(date, '%Y-%m-%d'),
-            description=description,
-            account_debit=account_debit,
-            account_credit=account_credit,
-            amount=amount,
-            created_by=current_user.id
-        )
-        
-        db.session.add(new_transaction)
-        db.session.commit()
-        
-        debit_entry = JournalEntry(
-            date=new_transaction.date,
-            description=description,
-            account_code=account_debit,
-            account_name=debit_account.account_name,
-            debit=amount,
-            credit=0,
-            reference=f"TRX-{new_transaction.id}",
-            transaction_id=new_transaction.id,
-            created_by=current_user.id,
-            entry_type='regular',
-            ledger_processed=True,
-            ledger_date=datetime.now()
-        )
-        
-        credit_entry = JournalEntry(
-            date=new_transaction.date,
-            description=description,
-            account_code=account_credit,
-            account_name=credit_account.account_name,
-            debit=0,
-            credit=amount,
-            reference=f"TRX-{new_transaction.id}",
-            transaction_id=new_transaction.id,
-            created_by=current_user.id,
-            entry_type='regular',
-            ledger_processed=True,
-            ledger_date=datetime.now()
-        )
-        
-        db.session.add(debit_entry)
-        db.session.add(credit_entry)
-        db.session.commit()
-        
-        flash('Transaksi berhasil ditambahkan dan diproses ke ledger!', 'success')
-        return redirect(url_for('transactions'))
     
+    # GET request - show transactions
     accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
-    transactions_list = Transaction.query.filter_by(created_by=current_user.id).order_by(Transaction.date.desc()).all()
+    
+    # Get filter parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    account_filter = request.args.get('account')
+    
+    query = Transaction.query.filter_by(created_by=current_user.id)
+    
+    if start_date:
+        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+        query = query.filter(Transaction.date >= start_date_obj)
+    
+    if end_date:
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+        query = query.filter(Transaction.date <= end_date_obj)
+    
+    if account_filter:
+        query = query.filter(
+            (Transaction.account_debit == account_filter) | 
+            (Transaction.account_credit == account_filter)
+        )
+    
+    transactions_list = query.order_by(Transaction.date.desc(), Transaction.id.desc()).all()
     
     total_amount = sum(transaction.amount for transaction in transactions_list)
     
@@ -1190,94 +1353,94 @@ def transactions():
                          accounts=accounts,
                          transactions=transactions_list,
                          total_amount=total_amount,
-                         today=datetime.now().strftime('%Y-%m-%d'))
+                         today=datetime.now().strftime('%Y-%m-%d'),
+                         start_date=start_date,
+                         end_date=end_date,
+                         selected_account=account_filter)
 
 @app.route('/transactions/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_transaction(id):
-    transaction = Transaction.query.get_or_404(id)
-    
-    if transaction.created_by != current_user.id:
-        flash('Anda tidak memiliki izin untuk menghapus transaksi ini!', 'error')
+    try:
+        transaction = Transaction.query.get_or_404(id)
+        
+        if transaction.created_by != current_user.id:
+            flash('Anda tidak memiliki izin untuk menghapus transaksi ini!', 'error')
+            return redirect(url_for('transactions'))
+        
+        # Delete associated journal entries
+        JournalEntry.query.filter_by(transaction_id=id).delete()
+        
+        db.session.delete(transaction)
+        db.session.commit()
+        
+        flash('Transaksi berhasil dihapus!', 'success')
         return redirect(url_for('transactions'))
-    
-    JournalEntry.query.filter_by(transaction_id=id).delete()
-    
-    db.session.delete(transaction)
-    db.session.commit()
-    
-    flash('Transaksi berhasil dihapus!', 'success')
-    return redirect(url_for('transactions'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal menghapus transaksi: {str(e)}', 'error')
+        return redirect(url_for('transactions'))
 
 # JOURNAL ROUTES
 @app.route('/general_journal')
 @login_required
 def general_journal():
-    transactions_list = Transaction.query.filter_by(created_by=current_user.id)\
-        .order_by(Transaction.date, Transaction.id).all()
+    # Get filter parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    account_filter = request.args.get('account')
+    entry_type_filter = request.args.get('entry_type')
     
-    transactions = []
-    total_debit = 0
-    total_credit = 0
+    # Build query
+    query = JournalEntry.query.filter_by(created_by=current_user.id)
     
-    account_balances = {}
+    if start_date:
+        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+        query = query.filter(JournalEntry.date >= start_date_obj)
     
-    for transaction in transactions_list:
-        journal_entries = JournalEntry.query.filter_by(transaction_id=transaction.id)\
-            .order_by(JournalEntry.debit.desc()).all()
+    if end_date:
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+        query = query.filter(JournalEntry.date <= end_date_obj)
     
-        if len(journal_entries) == 2:
-            debit_entry = None
-            credit_entry = None
-            
-            for entry in journal_entries:
-                if entry.debit > 0:
-                    debit_entry = entry
-                    total_debit += entry.debit
-                else:
-                    credit_entry = entry
-                    total_credit += entry.credit
-            
-            if debit_entry and credit_entry:
-                debit_account_code = debit_entry.account_code
-                if debit_account_code not in account_balances:
-                    account_balances[debit_account_code] = 0
-                account_balances[debit_account_code] += debit_entry.debit
-                
-                credit_account_code = credit_entry.account_code
-                if credit_account_code not in account_balances:
-                    account_balances[credit_account_code] = 0
-                account_balances[credit_account_code] -= credit_entry.credit
-                
-                transactions.append({
-                    'date': transaction.date,
-                    'debit_entry': {
-                        'account_name': debit_entry.account_name,
-                        'account_code': debit_entry.account_code,
-                        'debit': debit_entry.debit,
-                        'balance': account_balances[debit_account_code]
-                    },
-                    'credit_entry': {
-                        'account_name': credit_entry.account_name,
-                        'account_code': credit_entry.account_code,
-                        'credit': credit_entry.credit,
-                        'balance': account_balances[credit_account_code]
-                    }
-                })
+    if account_filter:
+        query = query.filter_by(account_code=account_filter)
     
-    all_journal_entries = JournalEntry.query.filter_by(created_by=current_user.id).all()
+    if entry_type_filter and entry_type_filter != 'all':
+        query = query.filter_by(entry_type=entry_type_filter)
+    
+    # Get all journal entries
+    all_entries = query.order_by(JournalEntry.date, JournalEntry.id).all()
+    
+    # Calculate totals
+    total_debit = sum(entry.debit for entry in all_entries)
+    total_credit = sum(entry.credit for entry in all_entries)
+    
+    # Get accounts for dropdown
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
+    
+    # Get entry types
+    entry_types = ['regular', 'adjusting', 'closing']
     
     return render_template('general_journal.html',
-                         journal_entries=all_journal_entries,
-                         transactions=transactions,
+                         journal_entries=all_entries,
+                         accounts=accounts,
+                         entry_types=entry_types,
                          total_debit=total_debit,
-                         total_credit=total_credit)
+                         total_credit=total_credit,
+                         start_date=start_date,
+                         end_date=end_date,
+                         selected_account=account_filter,
+                         selected_entry_type=entry_type_filter)
 
 # LEDGER ROUTES
 @app.route('/general_ledger')
 @login_required
 def general_ledger():
     account_id = request.args.get('account_id')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
     selected_account = None
     ledger_data = None
     
@@ -1290,26 +1453,51 @@ def general_ledger():
         if selected_account:
             ledger_data = ledger_processor.get_ledger_entries(
                 account_code=selected_account.account_code,
-                include_adjusting=True
+                start_date=start_date,
+                end_date=end_date,
+                include_adjusting=True,
+                include_closing=True
             )
     
     return render_template('general_ledger.html',
                          accounts=accounts,
                          selected_account=selected_account,
-                         ledger_data=ledger_data)
+                         ledger_data=ledger_data,
+                         start_date=start_date,
+                         end_date=end_date)
 
 # TRIAL BALANCE ROUTES
 @app.route('/trial_balance')
 @login_required
 def trial_balance():
-    trial_balance_obj = TrialBalance(include_adjusting=False)
+    # Get filter parameters
+    date_filter = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    
+    try:
+        filter_date = datetime.strptime(date_filter, '%Y-%m-%d')
+    except ValueError:
+        filter_date = datetime.now()
+    
+    trial_balance_obj = TrialBalance(period=filter_date.strftime('%B %Y'), 
+                                    include_adjusting=False, 
+                                    include_closing=False)
     
     ledger_processor = LedgerProcessor(current_user.id)
     
     accounts = Account.query.filter_by(is_active=True).all()
     
     for account in accounts:
-        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=False)
+        # Get balance up to the filter date
+        balance = 0
+        entries = ledger_processor.get_ledger_entries(
+            account_code=account.account_code,
+            end_date=filter_date,
+            include_adjusting=False,
+            include_closing=False
+        )
+        
+        if entries:
+            balance = entries[-1]['running_balance'] if entries else 0
         
         if account.normal_balance == 'Debit':
             if balance >= 0:
@@ -1322,27 +1510,46 @@ def trial_balance():
             else:
                 trial_balance_obj.add_account_balance(account, abs(balance), 0)
     
-    current_date = datetime.now()
-    period = current_date.strftime('%B %Y')
-    printed_date = current_date.strftime('%d/%m/%Y %H:%M')
+    printed_date = datetime.now().strftime('%d/%m/%Y %H:%M')
     
     return render_template('trial_balance.html',
                          trial_balance=trial_balance_obj,
-                         period=period,
-                         printed_date=printed_date)
+                         period=trial_balance_obj.period,
+                         printed_date=printed_date,
+                         filter_date=date_filter)
 
 # ADJUSTED TRIAL BALANCE ROUTES
 @app.route('/adjusted_trial_balance')
 @login_required
 def adjusted_trial_balance():
-    trial_balance_obj = TrialBalance(include_adjusting=True)
+    # Get filter parameters
+    date_filter = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    
+    try:
+        filter_date = datetime.strptime(date_filter, '%Y-%m-%d')
+    except ValueError:
+        filter_date = datetime.now()
+    
+    trial_balance_obj = TrialBalance(period=filter_date.strftime('%B %Y'), 
+                                    include_adjusting=True, 
+                                    include_closing=False)
     
     ledger_processor = LedgerProcessor(current_user.id)
     
     accounts = Account.query.filter_by(is_active=True).all()
     
     for account in accounts:
-        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+        # Get balance up to the filter date including adjusting entries
+        balance = 0
+        entries = ledger_processor.get_ledger_entries(
+            account_code=account.account_code,
+            end_date=filter_date,
+            include_adjusting=True,
+            include_closing=False
+        )
+        
+        if entries:
+            balance = entries[-1]['running_balance'] if entries else 0
         
         if account.normal_balance == 'Debit':
             if balance >= 0:
@@ -1355,21 +1562,20 @@ def adjusted_trial_balance():
             else:
                 trial_balance_obj.add_account_balance(account, abs(balance), 0)
     
-    current_date = datetime.now()
-    period = current_date.strftime('%B %Y')
-    printed_date = current_date.strftime('%d/%m/%Y %H:%M')
+    printed_date = datetime.now().strftime('%d/%m/%Y %H:%M')
     
     return render_template('adjusted_trial_balance.html',
                          trial_balance=trial_balance_obj,
-                         period=period,
-                         printed_date=printed_date)
+                         period=trial_balance_obj.period,
+                         printed_date=printed_date,
+                         filter_date=date_filter)
 
 # ADJUSTING ENTRIES ROUTES
 @app.route('/adjusting_entries')
 @login_required
 def adjusting_entries():
     adjusting_entries = AdjustingEntry.query.filter_by(created_by=current_user.id)\
-        .order_by(AdjustingEntry.date.desc()).all()
+        .order_by(AdjustingEntry.date.desc(), AdjustingEntry.id.desc()).all()
     
     total_debit = sum(entry.amount for entry in adjusting_entries)
     total_credit = total_debit
@@ -1381,7 +1587,7 @@ def adjusting_entries():
                          total_debit=total_debit,
                          total_credit=total_credit,
                          accounts=accounts,
-                         current_date=datetime.now())
+                         current_date=datetime.now().strftime('%Y-%m-%d'))
 
 @app.route('/add_adjusting_entry', methods=['POST'])
 @login_required
@@ -1392,6 +1598,7 @@ def add_adjusting_entry():
         account_credit_code = request.form['account_credit_code']
         amount = float(request.form['amount'])
         description = request.form.get('description', '').strip()
+        adjustment_type = request.form.get('adjustment_type', '')
         
         if account_debit_code == account_credit_code:
             flash('Akun debit dan kredit tidak boleh sama!', 'error')
@@ -1413,18 +1620,20 @@ def add_adjusting_entry():
             date=datetime.strptime(date, '%Y-%m-%d'),
             reference=reference,
             description=description,
-            adjustment_type=None,
+            adjustment_type=adjustment_type,
             account_debit_code=account_debit_code,
             account_debit_name=debit_account.account_name,
             account_credit_code=account_credit_code,
             account_credit_name=credit_account.account_name,
             amount=amount,
-            created_by=current_user.id
+            created_by=current_user.id,
+            posted_to_ledger=True
         )
         
         db.session.add(new_entry)
-        db.session.flush()
+        db.session.flush()  # Get the entry ID
         
+        # Create journal entries
         debit_journal = JournalEntry(
             date=datetime.strptime(date, '%Y-%m-%d'),
             description=description,
@@ -1470,35 +1679,68 @@ def add_adjusting_entry():
 @app.route('/adjusting_entries/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_adjusting_entry(id):
-    entry = AdjustingEntry.query.get_or_404(id)
-    
-    if entry.created_by != current_user.id:
-        flash('Anda tidak memiliki izin untuk menghapus entri ini!', 'error')
-        return redirect(url_for('adjusting_entries'))
-    
     try:
+        entry = AdjustingEntry.query.get_or_404(id)
+        
+        if entry.created_by != current_user.id:
+            flash('Anda tidak memiliki izin untuk menghapus entri ini!', 'error')
+            return redirect(url_for('adjusting_entries'))
+        
+        # Delete associated journal entries
         JournalEntry.query.filter_by(adjusting_entry_id=id).delete()
+        
         db.session.delete(entry)
         db.session.commit()
+        
         flash('Jurnal penyesuaian berhasil dihapus dari semua sistem!', 'success')
+        return redirect(url_for('adjusting_entries'))
+        
     except Exception as e:
         db.session.rollback()
         flash('Gagal menghapus jurnal penyesuaian: ' + str(e), 'error')
-    
-    return redirect(url_for('adjusting_entries'))
+        return redirect(url_for('adjusting_entries'))
 
 # FINANCIAL STATEMENTS ROUTES
 @app.route('/financial_statements')
 @login_required
 def financial_statements():
-    trial_balance_obj = TrialBalance(include_adjusting=True)
+    # Get period parameter
+    period_filter = request.args.get('period', datetime.now().strftime('%Y-%m'))
+    
+    try:
+        filter_date = datetime.strptime(period_filter + '-01', '%Y-%m-%d')
+    except ValueError:
+        filter_date = datetime.now()
+    
+    period_str = filter_date.strftime('%B %Y')
+    
+    trial_balance_obj = TrialBalance(period=period_str, 
+                                    include_adjusting=True, 
+                                    include_closing=False)
     
     ledger_processor = LedgerProcessor(current_user.id)
     
     accounts = Account.query.filter_by(is_active=True).all()
     
+    # Calculate end date for the period (end of month)
+    if filter_date.month == 12:
+        end_date = datetime(filter_date.year + 1, 1, 1)
+    else:
+        end_date = datetime(filter_date.year, filter_date.month + 1, 1)
+    
     for account in accounts:
-        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+        # Get balance for the period
+        balance = 0
+        entries = ledger_processor.get_ledger_entries(
+            account_code=account.account_code,
+            start_date=filter_date,
+            end_date=end_date,
+            include_adjusting=True,
+            include_closing=False
+        )
+        
+        if entries:
+            balance = entries[-1]['running_balance'] if entries else 0
         
         if account.normal_balance == 'Debit':
             if balance >= 0:
@@ -1511,37 +1753,46 @@ def financial_statements():
             else:
                 trial_balance_obj.add_account_balance(account, abs(balance), 0)
     
-    financial_stmt = FinancialStatement()
+    financial_stmt = FinancialStatement(period=period_str)
     income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
     balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
     
     return render_template('financial_statements.html',
                          income_statement=income_stmt,
                          balance_sheet=balance_sheet,
-                         period=financial_stmt.period,
-                         current_date=datetime.now())
+                         period=period_str,
+                         current_date=datetime.now().strftime('%d/%m/%Y %H:%M'),
+                         period_filter=period_filter)
 
 # CLOSING ENTRIES ROUTES
 @app.route('/closing_entries')
 @login_required
 def closing_entries():
     try:
-        closing_processor = ClosingProcessor(current_user.id)
-        closing_entries = closing_processor.generate_closing_entries()
-        success, message = closing_processor.save_closing_entries()
+        # Check if we need to generate closing entries
+        generate_new = request.args.get('generate', 'false') == 'true'
         
-        if not success:
-            flash(f'Peringatan: {message}', 'warning')
+        if generate_new:
+            closing_processor = ClosingProcessor(current_user.id)
+            closing_entries_list = closing_processor.generate_closing_entries()
+            success, message = closing_processor.save_closing_entries()
             
+            if success:
+                flash('Closing entries berhasil digenerate!', 'success')
+            else:
+                flash(f'Peringatan: {message}', 'warning')
+                
     except Exception as e:
         flash(f'Error dalam generating closing entries: {str(e)}', 'error')
     
+    # Get existing entries
     existing_entries = ClosingEntry.query.filter_by(created_by=current_user.id)\
-        .order_by(ClosingEntry.date.desc()).all()
+        .order_by(ClosingEntry.date.desc(), ClosingEntry.id.desc()).all()
     
     total_debit = sum(entry.amount for entry in existing_entries)
     total_credit = total_debit
     
+    # Calculate closure percentage
     nominal_accounts = Account.query.filter(Account.account_type.in_(['Pendapatan', 'Beban'])).all()
     closed_nominal_count = 0
     
@@ -1567,14 +1818,14 @@ def closing_entries():
 def generate_closing_entries():
     try:
         closing_processor = ClosingProcessor(current_user.id)
-        closing_entries = closing_processor.generate_closing_entries()
+        closing_entries_list = closing_processor.generate_closing_entries()
         success, message = closing_processor.save_closing_entries()
         
         if success:
             return jsonify({
                 'success': True,
                 'message': message,
-                'entries_count': len(closing_entries)
+                'entries_count': len(closing_entries_list)
             })
         else:
             return jsonify({
@@ -1592,91 +1843,202 @@ def generate_closing_entries():
 @app.route('/post_closing_trial_balance')
 @login_required
 def post_closing_trial_balance():
+    # Get filter parameters
+    date_filter = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    
+    try:
+        filter_date = datetime.strptime(date_filter, '%Y-%m-%d')
+    except ValueError:
+        filter_date = datetime.now()
+    
+    period_str = filter_date.strftime('%B %Y')
+    
     ledger_processor = LedgerProcessor(current_user.id)
     
-    accounts_needed = ['1101', '1201', '1301', '1311']
+    # Get all real accounts (Assets, Liabilities, Equity)
+    real_accounts = Account.query.filter(
+        Account.account_type.in_(['Aset', 'Liabilitas', 'Ekuitas']),
+        Account.is_active == True
+    ).order_by(Account.account_code).all()
     
     trial_balance_data = []
     total_debit = 0
     total_credit = 0
     
-    for account_code in accounts_needed:
-        account = Account.query.filter_by(account_code=account_code).first()
-        if account:
-            balance = ledger_processor.get_account_balance(account_code, include_adjusting=True)
-            
-            if account.normal_balance == 'Debit':
-                if balance >= 0:
-                    trial_balance_data.append({
-                        'account': account,
-                        'debit': abs(balance),
-                        'credit': 0
-                    })
-                    total_debit += abs(balance)
-                else:
-                    trial_balance_data.append({
-                        'account': account,
-                        'debit': 0,
-                        'credit': abs(balance)
-                    })
-                    total_credit += abs(balance)
-            else:
-                if balance >= 0:
-                    trial_balance_data.append({
-                        'account': account,
-                        'debit': 0,
-                        'credit': abs(balance)
-                    })
-                    total_credit += abs(balance)
-                else:
-                    trial_balance_data.append({
-                        'account': account,
-                        'debit': abs(balance),
-                        'credit': 0
-                    })
-                    total_debit += abs(balance)
-    
-    trial_balance_obj = TrialBalance(include_adjusting=True)
-    
-    all_accounts = Account.query.filter_by(is_active=True).all()
-    for account in all_accounts:
-        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+    for account in real_accounts:
+        # Get balance including closing entries
+        balance = 0
+        entries = ledger_processor.get_ledger_entries(
+            account_code=account.account_code,
+            end_date=filter_date,
+            include_adjusting=True,
+            include_closing=True
+        )
+        
+        if entries:
+            balance = entries[-1]['running_balance'] if entries else 0
         
         if account.normal_balance == 'Debit':
             if balance >= 0:
-                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+                trial_balance_data.append({
+                    'account': account,
+                    'debit': abs(balance),
+                    'credit': 0
+                })
+                total_debit += abs(balance)
             else:
-                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+                trial_balance_data.append({
+                    'account': account,
+                    'debit': 0,
+                    'credit': abs(balance)
+                })
+                total_credit += abs(balance)
         else:
             if balance >= 0:
-                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+                trial_balance_data.append({
+                    'account': account,
+                    'debit': 0,
+                    'credit': abs(balance)
+                })
+                total_credit += abs(balance)
             else:
-                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+                trial_balance_data.append({
+                    'account': account,
+                    'debit': abs(balance),
+                    'credit': 0
+                })
+                total_debit += abs(balance)
     
-    financial_stmt = FinancialStatement()
-    income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
-    balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
-    
-    modal_account = Account.query.filter_by(account_code='3101').first()
-    if modal_account:
-        modal_akhir = balance_sheet['equity']
-        trial_balance_data.append({
-            'account': modal_account,
-            'debit': 0,
-            'credit': modal_akhir
-        })
-        total_credit += modal_akhir
-    
-    current_date = datetime.now()
-    period = current_date.strftime('%B %Y')
-    printed_date = current_date.strftime('%d/%m/%Y %H:%M')
+    printed_date = datetime.now().strftime('%d/%m/%Y %H:%M')
     
     return render_template('post_closing_trial_balance.html',
                          trial_balance_data=trial_balance_data,
                          total_debit=total_debit,
                          total_credit=total_credit,
-                         period=period,
-                         printed_date=printed_date)
+                         period=period_str,
+                         printed_date=printed_date,
+                         filter_date=date_filter)
+
+# DATA EXPORT ROUTES
+@app.route('/export_data')
+@login_required
+def export_data():
+    """Export all accounting data"""
+    try:
+        # Create a CSV file in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(['Data Type', 'ID', 'Date', 'Description', 'Account Code', 
+                        'Account Name', 'Debit', 'Credit', 'Reference', 'Entry Type'])
+        
+        # Get all journal entries
+        journal_entries = JournalEntry.query.filter_by(created_by=current_user.id)\
+            .order_by(JournalEntry.date, JournalEntry.id).all()
+        
+        for entry in journal_entries:
+            writer.writerow([
+                'Journal Entry',
+                entry.id,
+                entry.date.strftime('%Y-%m-%d'),
+                entry.description,
+                entry.account_code,
+                entry.account_name,
+                entry.debit,
+                entry.credit,
+                entry.reference,
+                entry.entry_type
+            ])
+        
+        # Get all transactions
+        transactions = Transaction.query.filter_by(created_by=current_user.id)\
+            .order_by(Transaction.date, Transaction.id).all()
+        
+        for trx in transactions:
+            writer.writerow([
+                'Transaction',
+                trx.id,
+                trx.date.strftime('%Y-%m-%d'),
+                trx.description,
+                f"{trx.account_debit}/{trx.account_credit}",
+                f"{trx.account_debit_name}/{trx.account_credit_name}",
+                trx.amount,
+                trx.amount,
+                trx.reference,
+                'regular'
+            ])
+        
+        # Get all adjusting entries
+        adjusting_entries = AdjustingEntry.query.filter_by(created_by=current_user.id).all()
+        
+        for adj in adjusting_entries:
+            writer.writerow([
+                'Adjusting Entry',
+                adj.id,
+                adj.date.strftime('%Y-%m-%d'),
+                adj.description,
+                f"{adj.account_debit_code}/{adj.account_credit_code}",
+                f"{adj.account_debit_name}/{adj.account_credit_name}",
+                adj.amount,
+                adj.amount,
+                adj.reference,
+                'adjusting'
+            ])
+        
+        # Get all closing entries
+        closing_entries = ClosingEntry.query.filter_by(created_by=current_user.id).all()
+        
+        for cls in closing_entries:
+            writer.writerow([
+                'Closing Entry',
+                cls.id,
+                cls.date.strftime('%Y-%m-%d'),
+                cls.description,
+                f"{cls.account_debit_code}/{cls.account_credit_code}",
+                f"{cls.account_debit_name}/{cls.account_credit_name}",
+                cls.amount,
+                cls.amount,
+                cls.reference,
+                'closing'
+            ])
+        
+        # Prepare the output
+        output.seek(0)
+        
+        # Create response
+        response = send_file(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'accounting_data_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        )
+        
+        return response
+        
+    except Exception as e:
+        flash(f'Gagal mengekspor data: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+@app.route('/reset_data', methods=['POST'])
+@login_required
+def reset_data():
+    """Reset all accounting data (except accounts)"""
+    try:
+        # Delete all transactions and related entries
+        Transaction.query.filter_by(created_by=current_user.id).delete()
+        JournalEntry.query.filter_by(created_by=current_user.id).delete()
+        AdjustingEntry.query.filter_by(created_by=current_user.id).delete()
+        ClosingEntry.query.filter_by(created_by=current_user.id).delete()
+        
+        db.session.commit()
+        
+        flash('Semua data transaksi berhasil direset! Akun Chart of Accounts tetap tersimpan.', 'success')
+        return jsonify({'success': True, 'message': 'Data berhasil direset'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Gagal mereset data: {str(e)}'}), 500
 
 @app.route('/logout')
 @login_required
@@ -1692,6 +2054,15 @@ def test_db():
         return "Database connection OK"
     except Exception as e:
         return f"Database error: {str(e)}"
+
+# ERROR HANDLERS
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    return render_template('500.html'), 500
 
 if __name__ == '__main__':
     # Untuk Render, pakai PORT dari environment variable
