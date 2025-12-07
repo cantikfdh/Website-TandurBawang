@@ -16,17 +16,24 @@ login_manager = LoginManager()
 def create_app():
     app = Flask(__name__)
 
-    # ==================== KONFIGURASI DATABASE UNTUK RENDER ====================
+    # ==================== KONFIGURASI DATABASE YANG DIPERBAIKI ====================
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-    # Konfigurasi database untuk Render
-    database_url = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
+    # KONFIGURASI DATABASE YANG BENAR UNTUK RENDER & LOKAL
+    database_url = os.environ.get('DATABASE_URL')
 
-    # Fix untuk Render: postgres:// -> postgresql://
-    if database_url and database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    if database_url:
+        # Jika ada DATABASE_URL (Render dengan PostgreSQL)
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        print(f"Using PostgreSQL database from DATABASE_URL")
+    else:
+        # Jika tidak ada DATABASE_URL (Development lokal)
+        # PASTIKAN PATH INI BENAR: instance/app.db
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
+        print(f"Using SQLite database at: instance/app.db")
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     # ==========================================================================
 
@@ -85,11 +92,12 @@ def init_database(app):
             # Fallback ke SQLite jika PostgreSQL error
             try:
                 print("Trying SQLite fallback...")
-                app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+                # PASTIKAN FALLBACK KE PATH YANG BENAR
+                app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
                 db.create_all()
                 create_default_admin()
                 create_default_accounts_if_needed()
-                print("Fallback to SQLite database successful")
+                print("Fallback to SQLite database successful at instance/app.db")
             except Exception as e2:
                 print(f"Fallback also failed: {e2}")
 
