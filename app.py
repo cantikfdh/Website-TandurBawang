@@ -29,6 +29,50 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+db = SQLAlchemy(app)
+
+# ==================== MODELS HARUS DI SINI SEBELUM db.create_all() ====================
+# Models
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(120), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+class Account(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    account_code = db.Column(db.String(20), unique=True, nullable=False)
+    account_name = db.Column(db.String(200), nullable=False)
+    account_type = db.Column(db.String(50), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    normal_balance = db.Column(db.String(10), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'account_code': self.account_code,
+            'account_name': self.account_name,
+            'account_type': self.account_type,
+            'category': self.category,
+            'normal_balance': self.normal_balance,
+            'description': self.description,
+            'is_active': self.is_active
+        }
+
+# ... (SEMUA CLASS MODEL LAINNYA TETAP DI SINI) ...
+# ==========================================================================
+
 # RESET database untuk menghapus constraint conflicts
 with app.app_context():
     try:
@@ -58,8 +102,6 @@ with app.app_context():
         print("Fallback to SQLite memory database")
 
 login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
 
 # Models
 class User(UserMixin, db.Model):
