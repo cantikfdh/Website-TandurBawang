@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 import csv
 import io
+from sqlalchemy import inspect
 
 # Inisialisasi ekstensi di luar factory function
 db = SQLAlchemy()
@@ -41,34 +42,121 @@ def create_app():
     return app
 
 def init_database(app):
-    """Inisialisasi database - TIDAK MENGHAPUS DATA YANG SUDAH ADA"""
+    """Inisialisasi database dengan recovery mechanism"""
     with app.app_context():
         try:
             print(f"Database URL: {app.config['SQLALCHEMY_DATABASE_URI']}")
+            print("Initializing database...")
             
-            # HANYA create tabel jika belum ada - TIDAK DROP DATA LAMA
+            # Cek koneksi database
+            db.session.execute('SELECT 1')
+            print("Database connection OK")
+            
+            # Gunakan inspector untuk cek tabel yang sudah ada
+            inspector = inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            print(f"Existing tables: {existing_tables}")
+            
+            # Buat tabel jika belum ada (menggunakan create_all yang aman)
             db.create_all()
-            print("Ensured all tables exist (no data loss)")
+            print("Tables created/verified")
             
-            # Cek jika user admin sudah ada
-            if not User.query.filter_by(username='admin').first():
-                admin_user = User(username='admin', email='admin@tandurbawang.com')
-                admin_user.set_password('admin123')
-                db.session.add(admin_user)
-                db.session.commit()
-                print("Created default admin user: admin / admin123")
-            else:
-                print("Admin user already exists - data preserved")
+            # Cek jika tabel users sudah ada dan memiliki data
+            if 'users' in existing_tables:
+                user_count = db.session.query(User).count()
+                print(f"Found {user_count} existing users")
                 
+                # Jika tidak ada user, buat admin default
+                if user_count == 0:
+                    create_default_admin()
+                else:
+                    print("Users already exist, skipping admin creation")
+            else:
+                # Tabel users belum ada, buat admin default
+                create_default_admin()
+                
+            # Cek dan buat default accounts jika belum ada
+            create_default_accounts_if_needed()
+            
+            print("Database initialization complete")
+            
         except Exception as e:
-            print(f"Error initializing database: {e}")
+            print(f"Error initializing database: {str(e)}")
             # Fallback ke SQLite jika PostgreSQL error
             try:
+                print("Trying SQLite fallback...")
                 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
                 db.create_all()
-                print("Fallback to SQLite database")
+                create_default_admin()
+                create_default_accounts_if_needed()
+                print("Fallback to SQLite database successful")
             except Exception as e2:
                 print(f"Fallback also failed: {e2}")
+
+def create_default_admin():
+    """Buat user admin default jika belum ada"""
+    try:
+        if not User.query.filter_by(username='admin').first():
+            admin_user = User(username='admin', email='admin@tandurbawang.com')
+            admin_user.set_password('admin123')
+            db.session.add(admin_user)
+            db.session.commit()
+            print("Created default admin user: admin / admin123")
+            return True
+        else:
+            print("Admin user already exists")
+            return False
+    except Exception as e:
+        print(f"Error creating admin user: {e}")
+        return False
+
+def create_default_accounts_if_needed():
+    """Buat akun default jika belum ada"""
+    try:
+        account_count = Account.query.count()
+        if account_count == 0:
+            print("No accounts found, creating default accounts...")
+            
+            default_accounts = [
+                {'code': '1101', 'name': 'Kas', 'type': 'Aset', 'category': 'Kas & Bank', 'normal_balance': 'Debit'},
+                {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
+                {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
+                {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
+                {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
+                {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
+                {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
+                {'code': '4101', 'name': 'Penjualan', 'type': 'Pendapatan', 'category': 'Pendapatan Usaha', 'normal_balance': 'Kredit'},
+                {'code': '4102', 'name': 'Penjualan Lain-lain', 'type': 'Pendapatan', 'category': 'Pendapatan Lain', 'normal_balance': 'Kredit'},
+                {'code': '5101', 'name': 'Pembelian', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
+                {'code': '5901', 'name': 'HPP', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
+                {'code': '5201', 'name': 'Beban Transportasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+                {'code': '5202', 'name': 'Beban Tenaga Kerja', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+                {'code': '5203', 'name': 'Beban Sewa', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+                {'code': '5204', 'name': 'Beban Perbaikan', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+                {'code': '5301', 'name': 'Beban Penyusutan', 'type': 'Beban', 'category': 'Beban Non-Operasional', 'normal_balance': 'Debit'}
+            ]
+            
+            for acc in default_accounts:
+                account = Account(
+                    account_code=acc['code'],
+                    account_name=acc['name'],
+                    account_type=acc['type'],
+                    category=acc['category'],
+                    normal_balance=acc['normal_balance'],
+                    is_active=True
+                )
+                db.session.add(account)
+            
+            db.session.commit()
+            print(f"Created {len(default_accounts)} default accounts")
+            return True
+        else:
+            print(f"Found {account_count} existing accounts")
+            return False
+    except Exception as e:
+        print(f"Error creating default accounts: {e}")
+        db.session.rollback()
+        return False
 
 # ==================== MODELS ====================
 class User(UserMixin, db.Model):
@@ -654,7 +742,7 @@ class PostClosingTrialBalance:
 # Buat aplikasi Flask
 app = create_app()
 
-# Inisialisasi database - TANPA MENGHAPUS DATA LAMA
+# Inisialisasi database
 with app.app_context():
     init_database(app)
 
@@ -664,13 +752,54 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     
-    # Path gambar yang benar - langsung di folder static
     background_image = url_for('static', filename='background.jpeg')
     logo_image = url_for('static', filename='logo.png')
     
     return render_template('index.html', 
                          background_image=background_image,
                          logo_image=logo_image)
+
+@app.route('/debug-db')
+def debug_db():
+    try:
+        # Cek koneksi database
+        result = db.session.execute('SELECT version()').fetchone()
+        db_version = result[0] if result else 'No version'
+        
+        # Hitung jumlah data di setiap tabel
+        user_count = User.query.count()
+        account_count = Account.query.count()
+        transaction_count = Transaction.query.count()
+        journal_count = JournalEntry.query.count()
+        adjusting_count = AdjustingEntry.query.count()
+        closing_count = ClosingEntry.query.count()
+        
+        # Ambil beberapa sample data
+        users = User.query.limit(5).all()
+        accounts = Account.query.limit(5).all()
+        transactions = Transaction.query.limit(5).all()
+        
+        return jsonify({
+            'database_connected': True,
+            'db_version': db_version,
+            'counts': {
+                'users': user_count,
+                'accounts': account_count,
+                'transactions': transaction_count,
+                'journal_entries': journal_count,
+                'adjusting_entries': adjusting_count,
+                'closing_entries': closing_count
+            },
+            'sample_users': [{'id': u.id, 'username': u.username, 'email': u.email} for u in users],
+            'sample_accounts': [{'id': a.id, 'code': a.account_code, 'name': a.account_name, 'type': a.account_type} for a in accounts],
+            'sample_transactions': [{'id': t.id, 'date': t.date.strftime('%Y-%m-%d'), 'description': t.description, 'amount': t.amount} for t in transactions]
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'database_connected': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
