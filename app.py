@@ -41,33 +41,34 @@ def create_app():
     return app
 
 def init_database(app):
-    """Inisialisasi database"""
+    """Inisialisasi database - TIDAK MENGHAPUS DATA YANG SUDAH ADA"""
     with app.app_context():
         try:
             print(f"Database URL: {app.config['SQLALCHEMY_DATABASE_URI']}")
             
-            # Drop semua tabel jika ada
-            db.drop_all()
-            print("Dropped all tables")
-            
-            # Buat ulang semua tabel
+            # HANYA create tabel jika belum ada - TIDAK DROP DATA LAMA
             db.create_all()
-            print("Created all tables successfully")
+            print("Ensured all tables exist (no data loss)")
             
-            # Buat user admin default jika belum ada
+            # Cek jika user admin sudah ada
             if not User.query.filter_by(username='admin').first():
                 admin_user = User(username='admin', email='admin@tandurbawang.com')
                 admin_user.set_password('admin123')
                 db.session.add(admin_user)
                 db.session.commit()
                 print("Created default admin user: admin / admin123")
+            else:
+                print("Admin user already exists - data preserved")
                 
         except Exception as e:
             print(f"Error initializing database: {e}")
             # Fallback ke SQLite jika PostgreSQL error
-            app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
-            db.create_all()
-            print("Fallback to SQLite database")
+            try:
+                app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+                db.create_all()
+                print("Fallback to SQLite database")
+            except Exception as e2:
+                print(f"Fallback also failed: {e2}")
 
 # ==================== MODELS ====================
 class User(UserMixin, db.Model):
@@ -653,7 +654,7 @@ class PostClosingTrialBalance:
 # Buat aplikasi Flask
 app = create_app()
 
-# Inisialisasi database
+# Inisialisasi database - TANPA MENGHAPUS DATA LAMA
 with app.app_context():
     init_database(app)
 
@@ -663,7 +664,7 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     
-    # PERBAIKAN PATH GAMBAR - langsung di static folder
+    # Path gambar yang benar - langsung di folder static
     background_image = url_for('static', filename='background.jpeg')
     logo_image = url_for('static', filename='logo.png')
     
@@ -812,7 +813,6 @@ def dashboard():
     except Exception as e:
         print(f"Error calculating financial data: {e}")
     
-    # PERBAIKAN PATH LOGO - langsung di static folder
     logo_image = url_for('static', filename='logo.png')
     
     return render_template('dashboard.html', 
@@ -1096,7 +1096,7 @@ def general_journal():
     for transaction in transactions_list:
         journal_entries = JournalEntry.query.filter_by(transaction_id=transaction.id)\
             .order_by(JournalEntry.debit.desc()).all()
-        
+    
         if len(journal_entries) == 2:
             debit_entry = None
             credit_entry = None
