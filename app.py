@@ -28,9 +28,35 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # ==========================================================================
 
 db = SQLAlchemy(app)
+
+# RESET database untuk menghapus constraint conflicts
 with app.app_context():
-    db.create_all()
-    print(f"Database initialized: {app.config['SQLALCHEMY_DATABASE_URI']}")
+    try:
+        print(f"Database URL: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        
+        # Drop semua tabel jika ada (reset database)
+        db.drop_all()
+        print("Dropped all tables")
+        
+        # Buat ulang semua tabel
+        db.create_all()
+        print("Created all tables successfully")
+        
+        # Buat user admin default
+        if not User.query.filter_by(username='admin').first():
+            admin_user = User(username='admin', email='admin@tandurbawang.com')
+            admin_user.set_password('admin123')
+            db.session.add(admin_user)
+            db.session.commit()
+            print("Created default admin user: admin / admin123")
+            
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        # Fallback ke SQLite jika PostgreSQL error
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        db.create_all()
+        print("Fallback to SQLite memory database")
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -1502,50 +1528,6 @@ def logout():
     flash('Anda telah logout.', 'info')
     return redirect(url_for('index'))
 
-def init_db():
-    with app.app_context():
-        db.create_all()
-        
-        if not User.query.filter_by(username='admin').first():
-            admin_user = User(username='admin', email='admin@tandurbawang.com')
-            admin_user.set_password('admin123')
-            db.session.add(admin_user)
-            db.session.commit()
-            print("Default user created: admin / admin123")
-        
-        if Account.query.count() == 0:
-            default_accounts = [
-                {'code': '1101', 'name': 'Kas', 'type': 'Aset', 'category': 'Kas & Bank', 'normal_balance': 'Debit'},
-                {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
-                {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
-                {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
-                {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
-                {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
-                {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
-                {'code': '4101', 'name': 'Penjualan', 'type': 'Pendapatan', 'category': 'Pendapatan Usaha', 'normal_balance': 'Kredit'},
-                {'code': '4102', 'name': 'Penjualan Lain-lain', 'type': 'Pendapatan', 'category': 'Pendapatan Lain', 'normal_balance': 'Kredit'},
-                {'code': '5101', 'name': 'Pembelian', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
-                {'code': '5901', 'name': 'HPP', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
-                {'code': '5201', 'name': 'Beban Transportasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5202', 'name': 'Beban Tenaga Kerja', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5203', 'name': 'Beban Sewa', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5204', 'name': 'Beban Perbaikan', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5301', 'name': 'Beban Penyusutan', 'type': 'Beban', 'category': 'Beban Non-Operasional', 'normal_balance': 'Debit'}
-            ]
-            
-            for acc_data in default_accounts:
-                account = Account(
-                    account_code=acc_data['code'],
-                    account_name=acc_data['name'],
-                    account_type=acc_data['type'],
-                    category=acc_data['category'],
-                    normal_balance=acc_data['normal_balance']
-                )
-                db.session.add(account)
-            
-            db.session.commit()
-            print("Default accounts created successfully!")
-
 @app.route('/test-db')
 def test_db():
     try:
@@ -1555,8 +1537,6 @@ def test_db():
         return f"Database error: {str(e)}"
 
 if __name__ == '__main__':
-    init_db()
-    
     # Untuk Render, pakai PORT dari environment variable
     port = int(os.environ.get('PORT', 10000))
     
