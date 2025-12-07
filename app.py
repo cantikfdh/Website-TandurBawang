@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 import csv
 import io
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 # Inisialisasi ekstensi di luar factory function
 db = SQLAlchemy()
@@ -48,8 +48,8 @@ def init_database(app):
             print(f"Database URL: {app.config['SQLALCHEMY_DATABASE_URI']}")
             print("Initializing database...")
             
-            # Cek koneksi database
-            db.session.execute('SELECT 1')
+            # Cek koneksi database - PAKAI text() wrapper untuk SQLAlchemy 2.0
+            db.session.execute(text('SELECT 1'))
             print("Database connection OK")
             
             # Gunakan inspector untuk cek tabel yang sudah ada
@@ -762,8 +762,8 @@ def index():
 @app.route('/debug-db')
 def debug_db():
     try:
-        # Cek koneksi database
-        result = db.session.execute('SELECT version()').fetchone()
+        # Cek koneksi database - PAKAI text() wrapper
+        result = db.session.execute(text('SELECT version()')).fetchone()
         db_version = result[0] if result else 'No version'
         
         # Hitung jumlah data di setiap tabel
@@ -1688,7 +1688,7 @@ def logout():
 @app.route('/test-db')
 def test_db():
     try:
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         return "Database connection OK"
     except Exception as e:
         return f"Database error: {str(e)}"
