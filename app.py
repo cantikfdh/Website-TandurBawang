@@ -38,13 +38,6 @@ def create_app():
     login_manager.login_message = 'Silakan login untuk mengakses halaman ini.'
     login_manager.login_message_category = 'warning'
 
-    with app.app_context():
-        # Import dan registrasi routes
-        from app import routes
-        
-        # Buat tabel database
-        init_database(app)
-        
     return app
 
 def init_database(app):
@@ -53,11 +46,11 @@ def init_database(app):
         try:
             print(f"Database URL: {app.config['SQLALCHEMY_DATABASE_URI']}")
             
-            # Hanya drop dan create jika diperlukan (untuk development)
-            # Di production, sebaiknya pakai migration
+            # Drop semua tabel jika ada
             db.drop_all()
             print("Dropped all tables")
             
+            # Buat ulang semua tabel
             db.create_all()
             print("Created all tables successfully")
             
@@ -657,917 +650,919 @@ class PostClosingTrialBalance:
     def get_accounts_by_type(self, account_type):
         return [item for item in self.real_accounts_data if item['account'].account_type == account_type]
 
-# ==================== ROUTES ====================
-def init_routes(app):
-    @app.route('/')
-    def index():
-        if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
-        
-        background_image = url_for('static', filename='staticimages/background.jpeg')
-        logo_image = url_for('static', filename='staticimages/LOGO 1 (1).png')
-        
-        return render_template('index.html', 
-                             background_image=background_image,
-                             logo_image=logo_image)
-
-    @app.route('/login', methods=['GET', 'POST'])
-    def login():
-        if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
-            
-        if request.method == 'POST':
-            username = request.form.get('username')
-            password = request.form.get('password')
-            
-            user = User.query.filter_by(username=username).first()
-            
-            if user and user.check_password(password):
-                login_user(user)
-                flash('Login berhasil! Selamat datang di Tandur Bawang.', 'success')
-                return redirect(url_for('dashboard'))
-            else:
-                flash('Username atau password salah!', 'error')
-        
-        return render_template('login.html')
-
-    @app.route('/register', methods=['GET', 'POST'])
-    def register():
-        if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
-            
-        if request.method == 'POST':
-            username = request.form.get('username')
-            email = request.form.get('email')
-            password = request.form.get('password')
-            
-            errors = []
-            
-            if not username or not email or not password:
-                errors.append('Semua field harus diisi!')
-            
-            if User.query.filter_by(username=username).first():
-                errors.append('Username sudah ada!')
-            
-            if User.query.filter_by(email=email).first():
-                errors.append('Email sudah terdaftar!')
-            
-            if len(password) < 6:
-                errors.append('Password harus minimal 6 karakter!')
-                
-            if errors:
-                return render_template('register.html', errors=errors)
-            
-            new_user = User(username=username, email=email)
-            new_user.set_password(password)
-            
-            db.session.add(new_user)
-            db.session.commit()
-            
-            flash('Registrasi berhasil! Silakan login.', 'success')
-            return redirect(url_for('login'))
-        
-        return render_template('register.html')
-
-    # API ROUTES FOR DASHBOARD
-    @app.route('/api/dashboard/financial_data')
-    @login_required
-    def dashboard_financial_data():
-        try:
-            trial_balance_obj = TrialBalance(include_adjusting=True)
-            
-            ledger_processor = LedgerProcessor(current_user.id)
-            
-            accounts = Account.query.filter_by(is_active=True).all()
-            
-            for account in accounts:
-                balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
-                
-                if account.normal_balance == 'Debit':
-                    if balance >= 0:
-                        trial_balance_obj.add_account_balance(account, abs(balance), 0)
-                    else:
-                        trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                else:
-                    if balance >= 0:
-                        trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                    else:
-                        trial_balance_obj.add_account_balance(account, abs(balance), 0)
-            
-            financial_stmt = FinancialStatement()
-            income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
-            balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
-            
-            return jsonify({
-                'success': True,
-                'income_statement': income_stmt,
-                'balance_sheet': balance_sheet,
-                'net_income': income_stmt['net_income']
-            })
-            
-        except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-
-    @app.route('/dashboard')
-    @login_required
-    def dashboard():
-        total_accounts = Account.query.filter_by(is_active=True).count()
-        total_transactions = Transaction.query.filter_by(created_by=current_user.id).count()
-        total_journal_entries = JournalEntry.query.filter_by(created_by=current_user.id).count()
-        
-        recent_transactions = Transaction.query.filter_by(created_by=current_user.id).order_by(Transaction.created_at.desc()).limit(5).all()
-        
-        income_statement = None
-        balance_sheet = None
-        net_income = 0
-        
-        try:
-            trial_balance_obj = TrialBalance(include_adjusting=True)
-            ledger_processor = LedgerProcessor(current_user.id)
-            
-            accounts = Account.query.filter_by(is_active=True).all()
-            
-            for account in accounts:
-                balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
-                
-                if account.normal_balance == 'Debit':
-                    if balance >= 0:
-                        trial_balance_obj.add_account_balance(account, abs(balance), 0)
-                    else:
-                        trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                else:
-                    if balance >= 0:
-                        trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                    else:
-                        trial_balance_obj.add_account_balance(account, abs(balance), 0)
-            
-            financial_stmt = FinancialStatement()
-            income_statement = financial_stmt.calculate_income_statement(trial_balance_obj)
-            balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_statement['net_income'])
-            net_income = income_statement['net_income']
-            
-        except Exception as e:
-            print(f"Error calculating financial data: {e}")
-        
-        logo_image = url_for('static', filename='staticimages/LOGO 1 (1).png')
-        
-        return render_template('dashboard.html', 
-                             total_accounts=total_accounts,
-                             total_transactions=total_transactions,
-                             total_journal_entries=total_journal_entries,
-                             recent_transactions=recent_transactions,
-                             income_statement=income_statement,
-                             balance_sheet=balance_sheet,
-                             net_income=net_income,
-                             logo_image=logo_image)
-
-    # CHART OF ACCOUNTS ROUTES
-    @app.route('/chart_of_accounts')
-    @login_required
-    def chart_of_accounts():
-        accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
-        return render_template('ChartOfAccounts.html', accounts=accounts)
-
-    @app.route('/add_account', methods=['POST'])
-    @login_required
-    def add_account():
-        try:
-            account_code = request.form.get('account_code')
-            account_name = request.form.get('account_name')
-            account_type = request.form.get('account_type')
-            category = request.form.get('category')
-            normal_balance = request.form.get('normal_balance')
-            description = request.form.get('description')
-            
-            if not all([account_code, account_name, account_type, category, normal_balance]):
-                return jsonify({'success': False, 'message': 'Semua field bertanda * harus diisi!'})
-            
-            if Account.query.filter_by(account_code=account_code).first():
-                return jsonify({'success': False, 'message': 'Kode akun sudah ada!'})
-            
-            new_account = Account(
-                account_code=account_code,
-                account_name=account_name,
-                account_type=account_type,
-                category=category,
-                normal_balance=normal_balance,
-                description=description
-            )
-            
-            db.session.add(new_account)
-            db.session.commit()
-            
-            return jsonify({'success': True, 'message': 'Akun berhasil ditambahkan!'})
-            
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({'success': False, 'message': f'Gagal menambahkan akun: {str(e)}'})
-
-    @app.route('/edit_account', methods=['POST'])
-    @login_required
-    def edit_account():
-        try:
-            account_id = request.form.get('account_id')
-            account = Account.query.get_or_404(account_id)
-            
-            account_code = request.form.get('account_code')
-            account_name = request.form.get('account_name')
-            account_type = request.form.get('account_type')
-            category = request.form.get('category')
-            normal_balance = request.form.get('normal_balance')
-            description = request.form.get('description')
-            
-            if not all([account_code, account_name, account_type, category, normal_balance]):
-                return jsonify({'success': False, 'message': 'Semua field bertanda * harus diisi!'})
-            
-            existing_account = Account.query.filter_by(account_code=account_code).first()
-            if existing_account and existing_account.id != account.id:
-                return jsonify({'success': False, 'message': 'Kode akun sudah digunakan oleh akun lain!'})
-            
-            account.account_code = account_code
-            account.account_name = account_name
-            account.account_type = account_type
-            account.category = category
-            account.normal_balance = normal_balance
-            account.description = description
-            
-            db.session.commit()
-            
-            return jsonify({'success': True, 'message': 'Akun berhasil diperbarui!'})
-            
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({'success': False, 'message': f'Gagal memperbarui akun: {str(e)}'})
-
-    @app.route('/accounts/<int:account_id>/edit')
-    @login_required
-    def get_account(account_id):
-        account = Account.query.get_or_404(account_id)
-        return jsonify(account.to_dict())
-
-    @app.route('/accounts/<int:account_id>/toggle', methods=['POST'])
-    @login_required
-    def toggle_account(account_id):
-        try:
-            account = Account.query.get_or_404(account_id)
-            account.is_active = not account.is_active
-            db.session.commit()
-            
-            action = "diaktifkan" if account.is_active else "dinonaktifkan"
-            return jsonify({
-                'success': True, 
-                'is_active': account.is_active,
-                'message': f'Akun {account.account_name} berhasil {action}'
-            })
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({'success': False, 'error': str(e)}), 500
-
-    @app.route('/initialize_default_accounts', methods=['POST'])
-    @login_required
-    def initialize_default_accounts():
-        try:
-            existing_count = Account.query.count()
-            if existing_count > 0:
-                return jsonify({'success': False, 'message': 'Akun sudah ada di sistem'})
-            
-            specific_accounts = [
-                {'code': '1101', 'name': 'Kas', 'type': 'Aset', 'category': 'Kas & Bank', 'normal_balance': 'Debit'},
-                {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
-                {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
-                {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
-                {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
-                {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
-                {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
-                {'code': '4101', 'name': 'Penjualan', 'type': 'Pendapatan', 'category': 'Pendapatan Usaha', 'normal_balance': 'Kredit'},
-                {'code': '4102', 'name': 'Penjualan Lain-lain', 'type': 'Pendapatan', 'category': 'Pendapatan Lain', 'normal_balance': 'Kredit'},
-                {'code': '5101', 'name': 'Pembelian', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
-                {'code': '5901', 'name': 'HPP', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
-                {'code': '5201', 'name': 'Beban Transportasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5202', 'name': 'Beban Tenaga Kerja', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5203', 'name': 'Beban Sewa', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5204', 'name': 'Beban Perbaikan', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
-                {'code': '5301', 'name': 'Beban Penyusutan', 'type': 'Beban', 'category': 'Beban Non-Operasional', 'normal_balance': 'Debit'}
-            ]
-            
-            for account_data in specific_accounts:
-                account = Account(
-                    account_code=account_data['code'],
-                    account_name=account_data['name'],
-                    account_type=account_data['type'],
-                    category=account_data['category'],
-                    normal_balance=account_data['normal_balance'],
-                    is_active=True
-                )
-                db.session.add(account)
-            
-            db.session.commit()
-            return jsonify({'success': True, 'message': 'Akun default berhasil diinisialisasi!'})
-            
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({'success': False, 'message': f'Gagal menginisialisasi akun: {str(e)}'})
-
-    # TRANSACTIONS ROUTES
-    @app.route('/transactions', methods=['GET', 'POST'])
-    @login_required
-    def transactions():
-        if request.method == 'POST':
-            date = request.form.get('date')
-            description = request.form.get('description')
-            account_debit = request.form.get('account_debit')
-            account_credit = request.form.get('account_credit')
-            amount = request.form.get('amount')
-            
-            try:
-                amount = float(amount)
-                if amount <= 0:
-                    flash('Jumlah harus lebih dari 0!', 'error')
-                    return redirect(url_for('transactions'))
-            except ValueError:
-                flash('Jumlah harus berupa angka!', 'error')
-                return redirect(url_for('transactions'))
-            
-            if account_debit == account_credit:
-                flash('Akun debit dan kredit tidak boleh sama!', 'error')
-                return redirect(url_for('transactions'))
-            
-            debit_account = Account.query.filter_by(account_code=account_debit).first()
-            credit_account = Account.query.filter_by(account_code=account_credit).first()
-            
-            if not debit_account or not credit_account:
-                flash('Akun debit atau kredit tidak valid!', 'error')
-                return redirect(url_for('transactions'))
-            
-            new_transaction = Transaction(
-                date=datetime.strptime(date, '%Y-%m-%d'),
-                description=description,
-                account_debit=account_debit,
-                account_credit=account_credit,
-                amount=amount,
-                created_by=current_user.id
-            )
-            
-            db.session.add(new_transaction)
-            db.session.commit()
-            
-            debit_entry = JournalEntry(
-                date=new_transaction.date,
-                description=description,
-                account_code=account_debit,
-                account_name=debit_account.account_name,
-                debit=amount,
-                credit=0,
-                reference=f"TRX-{new_transaction.id}",
-                transaction_id=new_transaction.id,
-                created_by=current_user.id,
-                entry_type='regular',
-                ledger_processed=True,
-                ledger_date=datetime.now()
-            )
-            
-            credit_entry = JournalEntry(
-                date=new_transaction.date,
-                description=description,
-                account_code=account_credit,
-                account_name=credit_account.account_name,
-                debit=0,
-                credit=amount,
-                reference=f"TRX-{new_transaction.id}",
-                transaction_id=new_transaction.id,
-                created_by=current_user.id,
-                entry_type='regular',
-                ledger_processed=True,
-                ledger_date=datetime.now()
-            )
-            
-            db.session.add(debit_entry)
-            db.session.add(credit_entry)
-            db.session.commit()
-            
-            flash('Transaksi berhasil ditambahkan dan diproses ke ledger!', 'success')
-            return redirect(url_for('transactions'))
-        
-        accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
-        transactions_list = Transaction.query.filter_by(created_by=current_user.id).order_by(Transaction.date.desc()).all()
-        
-        total_amount = sum(transaction.amount for transaction in transactions_list)
-        
-        return render_template('transactions.html',
-                             accounts=accounts,
-                             transactions=transactions_list,
-                             total_amount=total_amount,
-                             today=datetime.now().strftime('%Y-%m-%d'))
-
-    @app.route('/transactions/delete/<int:id>', methods=['POST'])
-    @login_required
-    def delete_transaction(id):
-        transaction = Transaction.query.get_or_404(id)
-        
-        if transaction.created_by != current_user.id:
-            flash('Anda tidak memiliki izin untuk menghapus transaksi ini!', 'error')
-            return redirect(url_for('transactions'))
-        
-        JournalEntry.query.filter_by(transaction_id=id).delete()
-        
-        db.session.delete(transaction)
-        db.session.commit()
-        
-        flash('Transaksi berhasil dihapus!', 'success')
-        return redirect(url_for('transactions'))
-
-    # JOURNAL ROUTES
-    @app.route('/general_journal')
-    @login_required
-    def general_journal():
-        transactions_list = Transaction.query.filter_by(created_by=current_user.id)\
-            .order_by(Transaction.date, Transaction.id).all()
-        
-        transactions = []
-        total_debit = 0
-        total_credit = 0
-        
-        account_balances = {}
-        
-        for transaction in transactions_list:
-            journal_entries = JournalEntry.query.filter_by(transaction_id=transaction.id)\
-                .order_by(JournalEntry.debit.desc()).all()
-        
-            if len(journal_entries) == 2:
-                debit_entry = None
-                credit_entry = None
-                
-                for entry in journal_entries:
-                    if entry.debit > 0:
-                        debit_entry = entry
-                        total_debit += entry.debit
-                    else:
-                        credit_entry = entry
-                        total_credit += entry.credit
-                
-                if debit_entry and credit_entry:
-                    debit_account_code = debit_entry.account_code
-                    if debit_account_code not in account_balances:
-                        account_balances[debit_account_code] = 0
-                    account_balances[debit_account_code] += debit_entry.debit
-                    
-                    credit_account_code = credit_entry.account_code
-                    if credit_account_code not in account_balances:
-                        account_balances[credit_account_code] = 0
-                    account_balances[credit_account_code] -= credit_entry.credit
-                    
-                    transactions.append({
-                        'date': transaction.date,
-                        'debit_entry': {
-                            'account_name': debit_entry.account_name,
-                            'account_code': debit_entry.account_code,
-                            'debit': debit_entry.debit,
-                            'balance': account_balances[debit_account_code]
-                        },
-                        'credit_entry': {
-                            'account_name': credit_entry.account_name,
-                            'account_code': credit_entry.account_code,
-                            'credit': credit_entry.credit,
-                            'balance': account_balances[credit_account_code]
-                        }
-                    })
-        
-        all_journal_entries = JournalEntry.query.filter_by(created_by=current_user.id).all()
-        
-        return render_template('general_journal.html',
-                             journal_entries=all_journal_entries,
-                             transactions=transactions,
-                             total_debit=total_debit,
-                             total_credit=total_credit)
-
-    # LEDGER ROUTES
-    @app.route('/general_ledger')
-    @login_required
-    def general_ledger():
-        account_id = request.args.get('account_id')
-        selected_account = None
-        ledger_data = None
-        
-        ledger_processor = LedgerProcessor(current_user.id)
-        
-        accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
-        
-        if account_id:
-            selected_account = Account.query.get(account_id)
-            if selected_account:
-                ledger_data = ledger_processor.get_ledger_entries(
-                    account_code=selected_account.account_code,
-                    include_adjusting=True
-                )
-        
-        return render_template('general_ledger.html',
-                             accounts=accounts,
-                             selected_account=selected_account,
-                             ledger_data=ledger_data)
-
-    # TRIAL BALANCE ROUTES
-    @app.route('/trial_balance')
-    @login_required
-    def trial_balance():
-        trial_balance_obj = TrialBalance(include_adjusting=False)
-        
-        ledger_processor = LedgerProcessor(current_user.id)
-        
-        accounts = Account.query.filter_by(is_active=True).all()
-        
-        for account in accounts:
-            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=False)
-            
-            if account.normal_balance == 'Debit':
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-                else:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-            else:
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                else:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-        
-        current_date = datetime.now()
-        period = current_date.strftime('%B %Y')
-        printed_date = current_date.strftime('%d/%m/%Y %H:%M')
-        
-        return render_template('trial_balance.html',
-                             trial_balance=trial_balance_obj,
-                             period=period,
-                             printed_date=printed_date)
-
-    # ADJUSTED TRIAL BALANCE ROUTES
-    @app.route('/adjusted_trial_balance')
-    @login_required
-    def adjusted_trial_balance():
-        trial_balance_obj = TrialBalance(include_adjusting=True)
-        
-        ledger_processor = LedgerProcessor(current_user.id)
-        
-        accounts = Account.query.filter_by(is_active=True).all()
-        
-        for account in accounts:
-            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
-            
-            if account.normal_balance == 'Debit':
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-                else:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-            else:
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                else:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-        
-        current_date = datetime.now()
-        period = current_date.strftime('%B %Y')
-        printed_date = current_date.strftime('%d/%m/%Y %H:%M')
-        
-        return render_template('adjusted_trial_balance.html',
-                             trial_balance=trial_balance_obj,
-                             period=period,
-                             printed_date=printed_date)
-
-    # ADJUSTING ENTRIES ROUTES
-    @app.route('/adjusting_entries')
-    @login_required
-    def adjusting_entries():
-        adjusting_entries = AdjustingEntry.query.filter_by(created_by=current_user.id)\
-            .order_by(AdjustingEntry.date.desc()).all()
-        
-        total_debit = sum(entry.amount for entry in adjusting_entries)
-        total_credit = total_debit
-        
-        accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
-        
-        return render_template('adjusting_entries.html',
-                             adjusting_entries=adjusting_entries,
-                             total_debit=total_debit,
-                             total_credit=total_credit,
-                             accounts=accounts,
-                             current_date=datetime.now())
-
-    @app.route('/add_adjusting_entry', methods=['POST'])
-    @login_required
-    def add_adjusting_entry():
-        try:
-            date = request.form['date']
-            account_debit_code = request.form['account_debit_code']
-            account_credit_code = request.form['account_credit_code']
-            amount = float(request.form['amount'])
-            description = request.form.get('description', '').strip()
-            
-            if account_debit_code == account_credit_code:
-                flash('Akun debit dan kredit tidak boleh sama!', 'error')
-                return redirect(url_for('adjusting_entries'))
-            
-            reference = f"ADJ-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-            
-            debit_account = Account.query.filter_by(account_code=account_debit_code).first()
-            credit_account = Account.query.filter_by(account_code=account_credit_code).first()
-            
-            if not debit_account or not credit_account:
-                flash('Kode akun tidak valid', 'error')
-                return redirect(url_for('adjusting_entries'))
-            
-            if not description:
-                description = f"Penyesuaian: {debit_account.account_name} dan {credit_account.account_name}"
-            
-            new_entry = AdjustingEntry(
-                date=datetime.strptime(date, '%Y-%m-%d'),
-                reference=reference,
-                description=description,
-                adjustment_type=None,
-                account_debit_code=account_debit_code,
-                account_debit_name=debit_account.account_name,
-                account_credit_code=account_credit_code,
-                account_credit_name=credit_account.account_name,
-                amount=amount,
-                created_by=current_user.id
-            )
-            
-            db.session.add(new_entry)
-            db.session.flush()
-            
-            debit_journal = JournalEntry(
-                date=datetime.strptime(date, '%Y-%m-%d'),
-                description=description,
-                account_code=account_debit_code,
-                account_name=debit_account.account_name,
-                debit=amount,
-                credit=0.0,
-                reference=reference,
-                adjusting_entry_id=new_entry.id,
-                created_by=current_user.id,
-                entry_type='adjusting',
-                ledger_processed=True,
-                ledger_date=datetime.now()
-            )
-            
-            credit_journal = JournalEntry(
-                date=datetime.strptime(date, '%Y-%m-%d'),
-                description=description,
-                account_code=account_credit_code,
-                account_name=credit_account.account_name,
-                debit=0.0,
-                credit=amount,
-                reference=reference,
-                adjusting_entry_id=new_entry.id,
-                created_by=current_user.id,
-                entry_type='adjusting',
-                ledger_processed=True,
-                ledger_date=datetime.now()
-            )
-            
-            db.session.add(debit_journal)
-            db.session.add(credit_journal)
-            
-            db.session.commit()
-            flash('Jurnal penyesuaian berhasil ditambahkan!', 'success')
-            return redirect(url_for('adjusting_entries'))
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error: {str(e)}', 'error')
-            return redirect(url_for('adjusting_entries'))
-
-    @app.route('/adjusting_entries/delete/<int:id>', methods=['POST'])
-    @login_required
-    def delete_adjusting_entry(id):
-        entry = AdjustingEntry.query.get_or_404(id)
-        
-        if entry.created_by != current_user.id:
-            flash('Anda tidak memiliki izin untuk menghapus entri ini!', 'error')
-            return redirect(url_for('adjusting_entries'))
-        
-        try:
-            JournalEntry.query.filter_by(adjusting_entry_id=id).delete()
-            db.session.delete(entry)
-            db.session.commit()
-            flash('Jurnal penyesuaian berhasil dihapus dari semua sistem!', 'success')
-        except Exception as e:
-            db.session.rollback()
-            flash('Gagal menghapus jurnal penyesuaian: ' + str(e), 'error')
-        
-        return redirect(url_for('adjusting_entries'))
-
-    # FINANCIAL STATEMENTS ROUTES
-    @app.route('/financial_statements')
-    @login_required
-    def financial_statements():
-        trial_balance_obj = TrialBalance(include_adjusting=True)
-        
-        ledger_processor = LedgerProcessor(current_user.id)
-        
-        accounts = Account.query.filter_by(is_active=True).all()
-        
-        for account in accounts:
-            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
-            
-            if account.normal_balance == 'Debit':
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-                else:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-            else:
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                else:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-        
-        financial_stmt = FinancialStatement()
-        income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
-        balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
-        
-        return render_template('financial_statements.html',
-                             income_statement=income_stmt,
-                             balance_sheet=balance_sheet,
-                             period=financial_stmt.period,
-                             current_date=datetime.now())
-
-    # CLOSING ENTRIES ROUTES
-    @app.route('/closing_entries')
-    @login_required
-    def closing_entries():
-        try:
-            closing_processor = ClosingProcessor(current_user.id)
-            closing_entries = closing_processor.generate_closing_entries()
-            success, message = closing_processor.save_closing_entries()
-            
-            if not success:
-                flash(f'Peringatan: {message}', 'warning')
-                
-        except Exception as e:
-            flash(f'Error dalam generating closing entries: {str(e)}', 'error')
-        
-        existing_entries = ClosingEntry.query.filter_by(created_by=current_user.id)\
-            .order_by(ClosingEntry.date.desc()).all()
-        
-        total_debit = sum(entry.amount for entry in existing_entries)
-        total_credit = total_debit
-        
-        nominal_accounts = Account.query.filter(Account.account_type.in_(['Pendapatan', 'Beban'])).all()
-        closed_nominal_count = 0
-        
-        for account in nominal_accounts:
-            if any(entry.account_debit_code == account.account_code or 
-                   entry.account_credit_code == account.account_code 
-                   for entry in existing_entries):
-                closed_nominal_count += 1
-        
-        nominal_accounts_closed = closed_nominal_count == len(nominal_accounts)
-        closure_percentage = round((closed_nominal_count / len(nominal_accounts)) * 100) if nominal_accounts else 0
-        
-        return render_template('closing_entries.html',
-                             closing_entries=existing_entries,
-                             total_debit=total_debit,
-                             total_credit=total_credit,
-                             nominal_accounts_closed=nominal_accounts_closed,
-                             closure_percentage=closure_percentage,
-                             current_date=datetime.now())
-
-    @app.route('/generate-closing-entries', methods=['POST'])
-    @login_required
-    def generate_closing_entries():
-        try:
-            closing_processor = ClosingProcessor(current_user.id)
-            closing_entries = closing_processor.generate_closing_entries()
-            success, message = closing_processor.save_closing_entries()
-            
-            if success:
-                return jsonify({
-                    'success': True,
-                    'message': message,
-                    'entries_count': len(closing_entries)
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'message': message
-                }), 500
-                
-        except Exception as e:
-            return jsonify({
-                'success': False,
-                'message': f'Gagal generate closing entries: {str(e)}'
-            }), 500
-
-    # POST-CLOSING TRIAL BALANCE ROUTES
-    @app.route('/post_closing_trial_balance')
-    @login_required
-    def post_closing_trial_balance():
-        ledger_processor = LedgerProcessor(current_user.id)
-        
-        accounts_needed = ['1101', '1201', '1301', '1311']
-        
-        trial_balance_data = []
-        total_debit = 0
-        total_credit = 0
-        
-        for account_code in accounts_needed:
-            account = Account.query.filter_by(account_code=account_code).first()
-            if account:
-                balance = ledger_processor.get_account_balance(account_code, include_adjusting=True)
-                
-                if account.normal_balance == 'Debit':
-                    if balance >= 0:
-                        trial_balance_data.append({
-                            'account': account,
-                            'debit': abs(balance),
-                            'credit': 0
-                        })
-                        total_debit += abs(balance)
-                    else:
-                        trial_balance_data.append({
-                            'account': account,
-                            'debit': 0,
-                            'credit': abs(balance)
-                        })
-                        total_credit += abs(balance)
-                else:
-                    if balance >= 0:
-                        trial_balance_data.append({
-                            'account': account,
-                            'debit': 0,
-                            'credit': abs(balance)
-                        })
-                        total_credit += abs(balance)
-                    else:
-                        trial_balance_data.append({
-                            'account': account,
-                            'debit': abs(balance),
-                            'credit': 0
-                        })
-                        total_debit += abs(balance)
-        
-        trial_balance_obj = TrialBalance(include_adjusting=True)
-        
-        all_accounts = Account.query.filter_by(is_active=True).all()
-        for account in all_accounts:
-            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
-            
-            if account.normal_balance == 'Debit':
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-                else:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-            else:
-                if balance >= 0:
-                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
-                else:
-                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
-        
-        financial_stmt = FinancialStatement()
-        income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
-        balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
-        
-        modal_account = Account.query.filter_by(account_code='3101').first()
-        if modal_account:
-            modal_akhir = balance_sheet['equity']
-            trial_balance_data.append({
-                'account': modal_account,
-                'debit': 0,
-                'credit': modal_akhir
-            })
-            total_credit += modal_akhir
-        
-        current_date = datetime.now()
-        period = current_date.strftime('%B %Y')
-        printed_date = current_date.strftime('%d/%m/%Y %H:%M')
-        
-        return render_template('post_closing_trial_balance.html',
-                             trial_balance_data=trial_balance_data,
-                             total_debit=total_debit,
-                             total_credit=total_credit,
-                             period=period,
-                             printed_date=printed_date)
-
-    @app.route('/logout')
-    @login_required
-    def logout():
-        logout_user()
-        flash('Anda telah logout.', 'info')
-        return redirect(url_for('index'))
-
-    @app.route('/test-db')
-    def test_db():
-        try:
-            db.session.execute('SELECT 1')
-            return "Database connection OK"
-        except Exception as e:
-            return f"Database error: {str(e)}"
-
 # Buat aplikasi Flask
 app = create_app()
 
-# Inisialisasi routes
-init_routes(app)
+# Inisialisasi database
+with app.app_context():
+    init_database(app)
+
+# ==================== ROUTES ====================
+@app.route('/')
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    
+    # PERBAIKAN PATH GAMBAR - langsung di static folder
+    background_image = url_for('static', filename='background.jpeg')
+    logo_image = url_for('static', filename='logo.png')
+    
+    return render_template('index.html', 
+                         background_image=background_image,
+                         logo_image=logo_image)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+        
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and user.check_password(password):
+            login_user(user)
+            flash('Login berhasil! Selamat datang di Tandur Bawang.', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Username atau password salah!', 'error')
+    
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+        
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        errors = []
+        
+        if not username or not email or not password:
+            errors.append('Semua field harus diisi!')
+        
+        if User.query.filter_by(username=username).first():
+            errors.append('Username sudah ada!')
+        
+        if User.query.filter_by(email=email).first():
+            errors.append('Email sudah terdaftar!')
+        
+        if len(password) < 6:
+            errors.append('Password harus minimal 6 karakter!')
+            
+        if errors:
+            return render_template('register.html', errors=errors)
+        
+        new_user = User(username=username, email=email)
+        new_user.set_password(password)
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        flash('Registrasi berhasil! Silakan login.', 'success')
+        return redirect(url_for('login'))
+    
+    return render_template('register.html')
+
+# API ROUTES FOR DASHBOARD
+@app.route('/api/dashboard/financial_data')
+@login_required
+def dashboard_financial_data():
+    try:
+        trial_balance_obj = TrialBalance(include_adjusting=True)
+        
+        ledger_processor = LedgerProcessor(current_user.id)
+        
+        accounts = Account.query.filter_by(is_active=True).all()
+        
+        for account in accounts:
+            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+            
+            if account.normal_balance == 'Debit':
+                if balance >= 0:
+                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
+                else:
+                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
+            else:
+                if balance >= 0:
+                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
+                else:
+                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
+        
+        financial_stmt = FinancialStatement()
+        income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
+        balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
+        
+        return jsonify({
+            'success': True,
+            'income_statement': income_stmt,
+            'balance_sheet': balance_sheet,
+            'net_income': income_stmt['net_income']
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    total_accounts = Account.query.filter_by(is_active=True).count()
+    total_transactions = Transaction.query.filter_by(created_by=current_user.id).count()
+    total_journal_entries = JournalEntry.query.filter_by(created_by=current_user.id).count()
+    
+    recent_transactions = Transaction.query.filter_by(created_by=current_user.id).order_by(Transaction.created_at.desc()).limit(5).all()
+    
+    income_statement = None
+    balance_sheet = None
+    net_income = 0
+    
+    try:
+        trial_balance_obj = TrialBalance(include_adjusting=True)
+        ledger_processor = LedgerProcessor(current_user.id)
+        
+        accounts = Account.query.filter_by(is_active=True).all()
+        
+        for account in accounts:
+            balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+            
+            if account.normal_balance == 'Debit':
+                if balance >= 0:
+                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
+                else:
+                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
+            else:
+                if balance >= 0:
+                    trial_balance_obj.add_account_balance(account, 0, abs(balance))
+                else:
+                    trial_balance_obj.add_account_balance(account, abs(balance), 0)
+        
+        financial_stmt = FinancialStatement()
+        income_statement = financial_stmt.calculate_income_statement(trial_balance_obj)
+        balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_statement['net_income'])
+        net_income = income_statement['net_income']
+        
+    except Exception as e:
+        print(f"Error calculating financial data: {e}")
+    
+    # PERBAIKAN PATH LOGO - langsung di static folder
+    logo_image = url_for('static', filename='logo.png')
+    
+    return render_template('dashboard.html', 
+                         total_accounts=total_accounts,
+                         total_transactions=total_transactions,
+                         total_journal_entries=total_journal_entries,
+                         recent_transactions=recent_transactions,
+                         income_statement=income_statement,
+                         balance_sheet=balance_sheet,
+                         net_income=net_income,
+                         logo_image=logo_image)
+
+# CHART OF ACCOUNTS ROUTES
+@app.route('/chart_of_accounts')
+@login_required
+def chart_of_accounts():
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
+    return render_template('ChartOfAccounts.html', accounts=accounts)
+
+@app.route('/add_account', methods=['POST'])
+@login_required
+def add_account():
+    try:
+        account_code = request.form.get('account_code')
+        account_name = request.form.get('account_name')
+        account_type = request.form.get('account_type')
+        category = request.form.get('category')
+        normal_balance = request.form.get('normal_balance')
+        description = request.form.get('description')
+        
+        if not all([account_code, account_name, account_type, category, normal_balance]):
+            return jsonify({'success': False, 'message': 'Semua field bertanda * harus diisi!'})
+        
+        if Account.query.filter_by(account_code=account_code).first():
+            return jsonify({'success': False, 'message': 'Kode akun sudah ada!'})
+        
+        new_account = Account(
+            account_code=account_code,
+            account_name=account_name,
+            account_type=account_type,
+            category=category,
+            normal_balance=normal_balance,
+            description=description
+        )
+        
+        db.session.add(new_account)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Akun berhasil ditambahkan!'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Gagal menambahkan akun: {str(e)}'})
+
+@app.route('/edit_account', methods=['POST'])
+@login_required
+def edit_account():
+    try:
+        account_id = request.form.get('account_id')
+        account = Account.query.get_or_404(account_id)
+        
+        account_code = request.form.get('account_code')
+        account_name = request.form.get('account_name')
+        account_type = request.form.get('account_type')
+        category = request.form.get('category')
+        normal_balance = request.form.get('normal_balance')
+        description = request.form.get('description')
+        
+        if not all([account_code, account_name, account_type, category, normal_balance]):
+            return jsonify({'success': False, 'message': 'Semua field bertanda * harus diisi!'})
+        
+        existing_account = Account.query.filter_by(account_code=account_code).first()
+        if existing_account and existing_account.id != account.id:
+            return jsonify({'success': False, 'message': 'Kode akun sudah digunakan oleh akun lain!'})
+        
+        account.account_code = account_code
+        account.account_name = account_name
+        account.account_type = account_type
+        account.category = category
+        account.normal_balance = normal_balance
+        account.description = description
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Akun berhasil diperbarui!'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Gagal memperbarui akun: {str(e)}'})
+
+@app.route('/accounts/<int:account_id>/edit')
+@login_required
+def get_account(account_id):
+    account = Account.query.get_or_404(account_id)
+    return jsonify(account.to_dict())
+
+@app.route('/accounts/<int:account_id>/toggle', methods=['POST'])
+@login_required
+def toggle_account(account_id):
+    try:
+        account = Account.query.get_or_404(account_id)
+        account.is_active = not account.is_active
+        db.session.commit()
+        
+        action = "diaktifkan" if account.is_active else "dinonaktifkan"
+        return jsonify({
+            'success': True, 
+            'is_active': account.is_active,
+            'message': f'Akun {account.account_name} berhasil {action}'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/initialize_default_accounts', methods=['POST'])
+@login_required
+def initialize_default_accounts():
+    try:
+        existing_count = Account.query.count()
+        if existing_count > 0:
+            return jsonify({'success': False, 'message': 'Akun sudah ada di sistem'})
+        
+        specific_accounts = [
+            {'code': '1101', 'name': 'Kas', 'type': 'Aset', 'category': 'Kas & Bank', 'normal_balance': 'Debit'},
+            {'code': '1201', 'name': 'Persediaan', 'type': 'Aset', 'category': 'Persediaan', 'normal_balance': 'Debit'},
+            {'code': '1301', 'name': 'Peralatan', 'type': 'Aset', 'category': 'Aktiva Tetap', 'normal_balance': 'Debit'},
+            {'code': '1311', 'name': 'Akumulasi Penyusutan', 'type': 'Aset Kontra', 'category': 'Aktiva Tetap', 'normal_balance': 'Kredit'},
+            {'code': '3101', 'name': 'Modal Disetor', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Kredit'},
+            {'code': '3102', 'name': 'Prive', 'type': 'Ekuitas', 'category': 'Modal', 'normal_balance': 'Debit'},
+            {'code': '3901', 'name': 'Ikhtisar Laba Rugi', 'type': 'Ekuitas', 'category': 'Laba Rugi', 'normal_balance': 'Kredit'},
+            {'code': '4101', 'name': 'Penjualan', 'type': 'Pendapatan', 'category': 'Pendapatan Usaha', 'normal_balance': 'Kredit'},
+            {'code': '4102', 'name': 'Penjualan Lain-lain', 'type': 'Pendapatan', 'category': 'Pendapatan Lain', 'normal_balance': 'Kredit'},
+            {'code': '5101', 'name': 'Pembelian', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
+            {'code': '5901', 'name': 'HPP', 'type': 'Beban', 'category': 'Harga Pokok', 'normal_balance': 'Debit'},
+            {'code': '5201', 'name': 'Beban Transportasi', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+            {'code': '5202', 'name': 'Beban Tenaga Kerja', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+            {'code': '5203', 'name': 'Beban Sewa', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+            {'code': '5204', 'name': 'Beban Perbaikan', 'type': 'Beban', 'category': 'Beban Operasional', 'normal_balance': 'Debit'},
+            {'code': '5301', 'name': 'Beban Penyusutan', 'type': 'Beban', 'category': 'Beban Non-Operasional', 'normal_balance': 'Debit'}
+        ]
+        
+        for account_data in specific_accounts:
+            account = Account(
+                account_code=account_data['code'],
+                account_name=account_data['name'],
+                account_type=account_data['type'],
+                category=account_data['category'],
+                normal_balance=account_data['normal_balance'],
+                is_active=True
+            )
+            db.session.add(account)
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Akun default berhasil diinisialisasi!'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Gagal menginisialisasi akun: {str(e)}'})
+
+# TRANSACTIONS ROUTES
+@app.route('/transactions', methods=['GET', 'POST'])
+@login_required
+def transactions():
+    if request.method == 'POST':
+        date = request.form.get('date')
+        description = request.form.get('description')
+        account_debit = request.form.get('account_debit')
+        account_credit = request.form.get('account_credit')
+        amount = request.form.get('amount')
+        
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                flash('Jumlah harus lebih dari 0!', 'error')
+                return redirect(url_for('transactions'))
+        except ValueError:
+            flash('Jumlah harus berupa angka!', 'error')
+            return redirect(url_for('transactions'))
+        
+        if account_debit == account_credit:
+            flash('Akun debit dan kredit tidak boleh sama!', 'error')
+            return redirect(url_for('transactions'))
+        
+        debit_account = Account.query.filter_by(account_code=account_debit).first()
+        credit_account = Account.query.filter_by(account_code=account_credit).first()
+        
+        if not debit_account or not credit_account:
+            flash('Akun debit atau kredit tidak valid!', 'error')
+            return redirect(url_for('transactions'))
+        
+        new_transaction = Transaction(
+            date=datetime.strptime(date, '%Y-%m-%d'),
+            description=description,
+            account_debit=account_debit,
+            account_credit=account_credit,
+            amount=amount,
+            created_by=current_user.id
+        )
+        
+        db.session.add(new_transaction)
+        db.session.commit()
+        
+        debit_entry = JournalEntry(
+            date=new_transaction.date,
+            description=description,
+            account_code=account_debit,
+            account_name=debit_account.account_name,
+            debit=amount,
+            credit=0,
+            reference=f"TRX-{new_transaction.id}",
+            transaction_id=new_transaction.id,
+            created_by=current_user.id,
+            entry_type='regular',
+            ledger_processed=True,
+            ledger_date=datetime.now()
+        )
+        
+        credit_entry = JournalEntry(
+            date=new_transaction.date,
+            description=description,
+            account_code=account_credit,
+            account_name=credit_account.account_name,
+            debit=0,
+            credit=amount,
+            reference=f"TRX-{new_transaction.id}",
+            transaction_id=new_transaction.id,
+            created_by=current_user.id,
+            entry_type='regular',
+            ledger_processed=True,
+            ledger_date=datetime.now()
+        )
+        
+        db.session.add(debit_entry)
+        db.session.add(credit_entry)
+        db.session.commit()
+        
+        flash('Transaksi berhasil ditambahkan dan diproses ke ledger!', 'success')
+        return redirect(url_for('transactions'))
+    
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
+    transactions_list = Transaction.query.filter_by(created_by=current_user.id).order_by(Transaction.date.desc()).all()
+    
+    total_amount = sum(transaction.amount for transaction in transactions_list)
+    
+    return render_template('transactions.html',
+                         accounts=accounts,
+                         transactions=transactions_list,
+                         total_amount=total_amount,
+                         today=datetime.now().strftime('%Y-%m-%d'))
+
+@app.route('/transactions/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_transaction(id):
+    transaction = Transaction.query.get_or_404(id)
+    
+    if transaction.created_by != current_user.id:
+        flash('Anda tidak memiliki izin untuk menghapus transaksi ini!', 'error')
+        return redirect(url_for('transactions'))
+    
+    JournalEntry.query.filter_by(transaction_id=id).delete()
+    
+    db.session.delete(transaction)
+    db.session.commit()
+    
+    flash('Transaksi berhasil dihapus!', 'success')
+    return redirect(url_for('transactions'))
+
+# JOURNAL ROUTES
+@app.route('/general_journal')
+@login_required
+def general_journal():
+    transactions_list = Transaction.query.filter_by(created_by=current_user.id)\
+        .order_by(Transaction.date, Transaction.id).all()
+    
+    transactions = []
+    total_debit = 0
+    total_credit = 0
+    
+    account_balances = {}
+    
+    for transaction in transactions_list:
+        journal_entries = JournalEntry.query.filter_by(transaction_id=transaction.id)\
+            .order_by(JournalEntry.debit.desc()).all()
+        
+        if len(journal_entries) == 2:
+            debit_entry = None
+            credit_entry = None
+            
+            for entry in journal_entries:
+                if entry.debit > 0:
+                    debit_entry = entry
+                    total_debit += entry.debit
+                else:
+                    credit_entry = entry
+                    total_credit += entry.credit
+            
+            if debit_entry and credit_entry:
+                debit_account_code = debit_entry.account_code
+                if debit_account_code not in account_balances:
+                    account_balances[debit_account_code] = 0
+                account_balances[debit_account_code] += debit_entry.debit
+                
+                credit_account_code = credit_entry.account_code
+                if credit_account_code not in account_balances:
+                    account_balances[credit_account_code] = 0
+                account_balances[credit_account_code] -= credit_entry.credit
+                
+                transactions.append({
+                    'date': transaction.date,
+                    'debit_entry': {
+                        'account_name': debit_entry.account_name,
+                        'account_code': debit_entry.account_code,
+                        'debit': debit_entry.debit,
+                        'balance': account_balances[debit_account_code]
+                    },
+                    'credit_entry': {
+                        'account_name': credit_entry.account_name,
+                        'account_code': credit_entry.account_code,
+                        'credit': credit_entry.credit,
+                        'balance': account_balances[credit_account_code]
+                    }
+                })
+    
+    all_journal_entries = JournalEntry.query.filter_by(created_by=current_user.id).all()
+    
+    return render_template('general_journal.html',
+                         journal_entries=all_journal_entries,
+                         transactions=transactions,
+                         total_debit=total_debit,
+                         total_credit=total_credit)
+
+# LEDGER ROUTES
+@app.route('/general_ledger')
+@login_required
+def general_ledger():
+    account_id = request.args.get('account_id')
+    selected_account = None
+    ledger_data = None
+    
+    ledger_processor = LedgerProcessor(current_user.id)
+    
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
+    
+    if account_id:
+        selected_account = Account.query.get(account_id)
+        if selected_account:
+            ledger_data = ledger_processor.get_ledger_entries(
+                account_code=selected_account.account_code,
+                include_adjusting=True
+            )
+    
+    return render_template('general_ledger.html',
+                         accounts=accounts,
+                         selected_account=selected_account,
+                         ledger_data=ledger_data)
+
+# TRIAL BALANCE ROUTES
+@app.route('/trial_balance')
+@login_required
+def trial_balance():
+    trial_balance_obj = TrialBalance(include_adjusting=False)
+    
+    ledger_processor = LedgerProcessor(current_user.id)
+    
+    accounts = Account.query.filter_by(is_active=True).all()
+    
+    for account in accounts:
+        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=False)
+        
+        if account.normal_balance == 'Debit':
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+            else:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+        else:
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+            else:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+    
+    current_date = datetime.now()
+    period = current_date.strftime('%B %Y')
+    printed_date = current_date.strftime('%d/%m/%Y %H:%M')
+    
+    return render_template('trial_balance.html',
+                         trial_balance=trial_balance_obj,
+                         period=period,
+                         printed_date=printed_date)
+
+# ADJUSTED TRIAL BALANCE ROUTES
+@app.route('/adjusted_trial_balance')
+@login_required
+def adjusted_trial_balance():
+    trial_balance_obj = TrialBalance(include_adjusting=True)
+    
+    ledger_processor = LedgerProcessor(current_user.id)
+    
+    accounts = Account.query.filter_by(is_active=True).all()
+    
+    for account in accounts:
+        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+        
+        if account.normal_balance == 'Debit':
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+            else:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+        else:
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+            else:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+    
+    current_date = datetime.now()
+    period = current_date.strftime('%B %Y')
+    printed_date = current_date.strftime('%d/%m/%Y %H:%M')
+    
+    return render_template('adjusted_trial_balance.html',
+                         trial_balance=trial_balance_obj,
+                         period=period,
+                         printed_date=printed_date)
+
+# ADJUSTING ENTRIES ROUTES
+@app.route('/adjusting_entries')
+@login_required
+def adjusting_entries():
+    adjusting_entries = AdjustingEntry.query.filter_by(created_by=current_user.id)\
+        .order_by(AdjustingEntry.date.desc()).all()
+    
+    total_debit = sum(entry.amount for entry in adjusting_entries)
+    total_credit = total_debit
+    
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.account_code).all()
+    
+    return render_template('adjusting_entries.html',
+                         adjusting_entries=adjusting_entries,
+                         total_debit=total_debit,
+                         total_credit=total_credit,
+                         accounts=accounts,
+                         current_date=datetime.now())
+
+@app.route('/add_adjusting_entry', methods=['POST'])
+@login_required
+def add_adjusting_entry():
+    try:
+        date = request.form['date']
+        account_debit_code = request.form['account_debit_code']
+        account_credit_code = request.form['account_credit_code']
+        amount = float(request.form['amount'])
+        description = request.form.get('description', '').strip()
+        
+        if account_debit_code == account_credit_code:
+            flash('Akun debit dan kredit tidak boleh sama!', 'error')
+            return redirect(url_for('adjusting_entries'))
+        
+        reference = f"ADJ-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        
+        debit_account = Account.query.filter_by(account_code=account_debit_code).first()
+        credit_account = Account.query.filter_by(account_code=account_credit_code).first()
+        
+        if not debit_account or not credit_account:
+            flash('Kode akun tidak valid', 'error')
+            return redirect(url_for('adjusting_entries'))
+        
+        if not description:
+            description = f"Penyesuaian: {debit_account.account_name} dan {credit_account.account_name}"
+        
+        new_entry = AdjustingEntry(
+            date=datetime.strptime(date, '%Y-%m-%d'),
+            reference=reference,
+            description=description,
+            adjustment_type=None,
+            account_debit_code=account_debit_code,
+            account_debit_name=debit_account.account_name,
+            account_credit_code=account_credit_code,
+            account_credit_name=credit_account.account_name,
+            amount=amount,
+            created_by=current_user.id
+        )
+        
+        db.session.add(new_entry)
+        db.session.flush()
+        
+        debit_journal = JournalEntry(
+            date=datetime.strptime(date, '%Y-%m-%d'),
+            description=description,
+            account_code=account_debit_code,
+            account_name=debit_account.account_name,
+            debit=amount,
+            credit=0.0,
+            reference=reference,
+            adjusting_entry_id=new_entry.id,
+            created_by=current_user.id,
+            entry_type='adjusting',
+            ledger_processed=True,
+            ledger_date=datetime.now()
+        )
+        
+        credit_journal = JournalEntry(
+            date=datetime.strptime(date, '%Y-%m-%d'),
+            description=description,
+            account_code=account_credit_code,
+            account_name=credit_account.account_name,
+            debit=0.0,
+            credit=amount,
+            reference=reference,
+            adjusting_entry_id=new_entry.id,
+            created_by=current_user.id,
+            entry_type='adjusting',
+            ledger_processed=True,
+            ledger_date=datetime.now()
+        )
+        
+        db.session.add(debit_journal)
+        db.session.add(credit_journal)
+        
+        db.session.commit()
+        flash('Jurnal penyesuaian berhasil ditambahkan!', 'success')
+        return redirect(url_for('adjusting_entries'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error: {str(e)}', 'error')
+        return redirect(url_for('adjusting_entries'))
+
+@app.route('/adjusting_entries/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_adjusting_entry(id):
+    entry = AdjustingEntry.query.get_or_404(id)
+    
+    if entry.created_by != current_user.id:
+        flash('Anda tidak memiliki izin untuk menghapus entri ini!', 'error')
+        return redirect(url_for('adjusting_entries'))
+    
+    try:
+        JournalEntry.query.filter_by(adjusting_entry_id=id).delete()
+        db.session.delete(entry)
+        db.session.commit()
+        flash('Jurnal penyesuaian berhasil dihapus dari semua sistem!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Gagal menghapus jurnal penyesuaian: ' + str(e), 'error')
+    
+    return redirect(url_for('adjusting_entries'))
+
+# FINANCIAL STATEMENTS ROUTES
+@app.route('/financial_statements')
+@login_required
+def financial_statements():
+    trial_balance_obj = TrialBalance(include_adjusting=True)
+    
+    ledger_processor = LedgerProcessor(current_user.id)
+    
+    accounts = Account.query.filter_by(is_active=True).all()
+    
+    for account in accounts:
+        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+        
+        if account.normal_balance == 'Debit':
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+            else:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+        else:
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+            else:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+    
+    financial_stmt = FinancialStatement()
+    income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
+    balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
+    
+    return render_template('financial_statements.html',
+                         income_statement=income_stmt,
+                         balance_sheet=balance_sheet,
+                         period=financial_stmt.period,
+                         current_date=datetime.now())
+
+# CLOSING ENTRIES ROUTES
+@app.route('/closing_entries')
+@login_required
+def closing_entries():
+    try:
+        closing_processor = ClosingProcessor(current_user.id)
+        closing_entries = closing_processor.generate_closing_entries()
+        success, message = closing_processor.save_closing_entries()
+        
+        if not success:
+            flash(f'Peringatan: {message}', 'warning')
+            
+    except Exception as e:
+        flash(f'Error dalam generating closing entries: {str(e)}', 'error')
+    
+    existing_entries = ClosingEntry.query.filter_by(created_by=current_user.id)\
+        .order_by(ClosingEntry.date.desc()).all()
+    
+    total_debit = sum(entry.amount for entry in existing_entries)
+    total_credit = total_debit
+    
+    nominal_accounts = Account.query.filter(Account.account_type.in_(['Pendapatan', 'Beban'])).all()
+    closed_nominal_count = 0
+    
+    for account in nominal_accounts:
+        if any(entry.account_debit_code == account.account_code or 
+               entry.account_credit_code == account.account_code 
+               for entry in existing_entries):
+            closed_nominal_count += 1
+    
+    nominal_accounts_closed = closed_nominal_count == len(nominal_accounts)
+    closure_percentage = round((closed_nominal_count / len(nominal_accounts)) * 100) if nominal_accounts else 0
+    
+    return render_template('closing_entries.html',
+                         closing_entries=existing_entries,
+                         total_debit=total_debit,
+                         total_credit=total_credit,
+                         nominal_accounts_closed=nominal_accounts_closed,
+                         closure_percentage=closure_percentage,
+                         current_date=datetime.now())
+
+@app.route('/generate-closing-entries', methods=['POST'])
+@login_required
+def generate_closing_entries():
+    try:
+        closing_processor = ClosingProcessor(current_user.id)
+        closing_entries = closing_processor.generate_closing_entries()
+        success, message = closing_processor.save_closing_entries()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message,
+                'entries_count': len(closing_entries)
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': message
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Gagal generate closing entries: {str(e)}'
+        }), 500
+
+# POST-CLOSING TRIAL BALANCE ROUTES
+@app.route('/post_closing_trial_balance')
+@login_required
+def post_closing_trial_balance():
+    ledger_processor = LedgerProcessor(current_user.id)
+    
+    accounts_needed = ['1101', '1201', '1301', '1311']
+    
+    trial_balance_data = []
+    total_debit = 0
+    total_credit = 0
+    
+    for account_code in accounts_needed:
+        account = Account.query.filter_by(account_code=account_code).first()
+        if account:
+            balance = ledger_processor.get_account_balance(account_code, include_adjusting=True)
+            
+            if account.normal_balance == 'Debit':
+                if balance >= 0:
+                    trial_balance_data.append({
+                        'account': account,
+                        'debit': abs(balance),
+                        'credit': 0
+                    })
+                    total_debit += abs(balance)
+                else:
+                    trial_balance_data.append({
+                        'account': account,
+                        'debit': 0,
+                        'credit': abs(balance)
+                    })
+                    total_credit += abs(balance)
+            else:
+                if balance >= 0:
+                    trial_balance_data.append({
+                        'account': account,
+                        'debit': 0,
+                        'credit': abs(balance)
+                    })
+                    total_credit += abs(balance)
+                else:
+                    trial_balance_data.append({
+                        'account': account,
+                        'debit': abs(balance),
+                        'credit': 0
+                    })
+                    total_debit += abs(balance)
+    
+    trial_balance_obj = TrialBalance(include_adjusting=True)
+    
+    all_accounts = Account.query.filter_by(is_active=True).all()
+    for account in all_accounts:
+        balance = ledger_processor.get_account_balance(account.account_code, include_adjusting=True)
+        
+        if account.normal_balance == 'Debit':
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+            else:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+        else:
+            if balance >= 0:
+                trial_balance_obj.add_account_balance(account, 0, abs(balance))
+            else:
+                trial_balance_obj.add_account_balance(account, abs(balance), 0)
+    
+    financial_stmt = FinancialStatement()
+    income_stmt = financial_stmt.calculate_income_statement(trial_balance_obj)
+    balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
+    
+    modal_account = Account.query.filter_by(account_code='3101').first()
+    if modal_account:
+        modal_akhir = balance_sheet['equity']
+        trial_balance_data.append({
+            'account': modal_account,
+            'debit': 0,
+            'credit': modal_akhir
+        })
+        total_credit += modal_akhir
+    
+    current_date = datetime.now()
+    period = current_date.strftime('%B %Y')
+    printed_date = current_date.strftime('%d/%m/%Y %H:%M')
+    
+    return render_template('post_closing_trial_balance.html',
+                         trial_balance_data=trial_balance_data,
+                         total_debit=total_debit,
+                         total_credit=total_credit,
+                         period=period,
+                         printed_date=printed_date)
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Anda telah logout.', 'info')
+    return redirect(url_for('index'))
+
+@app.route('/test-db')
+def test_db():
+    try:
+        db.session.execute('SELECT 1')
+        return "Database connection OK"
+    except Exception as e:
+        return f"Database error: {str(e)}"
 
 if __name__ == '__main__':
     # Untuk Render, pakai PORT dari environment variable
