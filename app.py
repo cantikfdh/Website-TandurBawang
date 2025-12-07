@@ -19,20 +19,23 @@ def create_app():
     # ==================== KONFIGURASI DATABASE YANG DIPERBAIKI ====================
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-    # KONFIGURASI DATABASE YANG BENAR UNTUK RENDER & LOKAL
-    database_url = os.environ.get('DATABASE_URL')
-
-    if database_url:
-        # Jika ada DATABASE_URL (Render dengan PostgreSQL)
-        if database_url.startswith("postgres://"):
-            database_url = database_url.replace("postgres://", "postgresql://", 1)
-        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-        print(f"Using PostgreSQL database from DATABASE_URL")
-    else:
-        # Jika tidak ada DATABASE_URL (Development lokal)
-        # PASTIKAN PATH INI BENAR: instance/app.db
+    # 🚀 KONFIGURASI DATABASE FINAL UNTUK RENDER
+    # Render punya Environment Variable: RENDER=true
+    if os.environ.get('RENDER'):
+        # DI RENDER: Selalu pakai SQLite di instance/app.db
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
-        print(f"Using SQLite database at: instance/app.db")
+        print("🚀 RENDER ENVIRONMENT: Using SQLite database at instance/app.db")
+    else:
+        # DI DEVELOPMENT (lokal): Cek DATABASE_URL
+        database_url = os.environ.get('DATABASE_URL')
+        if database_url:
+            if database_url.startswith("postgres://"):
+                database_url = database_url.replace("postgres://", "postgresql://", 1)
+            app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+            print(f"Development: Using PostgreSQL from DATABASE_URL")
+        else:
+            app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
+            print(f"Development: Using SQLite database at instance/app.db")
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     # ==========================================================================
