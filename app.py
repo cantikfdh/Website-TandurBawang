@@ -1045,8 +1045,8 @@ def dashboard():
         
         financial_stmt = FinancialStatement()
         income_statement = financial_stmt.calculate_income_statement(trial_balance_obj)
-        balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_statement['net_income'])
-        net_income = income_statement['net_income']
+        balance_sheet = financial_stmt.calculate_balance_sheet(trial_balance_obj, income_stmt['net_income'])
+        net_income = income_stmt['net_income']
         
     except Exception as e:
         print(f"Error calculating financial data: {e}")
@@ -2070,6 +2070,10 @@ if __name__ == '__main__':
     
     # Debug mode hanya untuk local, di Render harus False
     debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    
+    # IMPORTANT: Don't call init_database here, it's already called above
+    # with app.app_context():
+    #     init_database(app)
     
     app.run(
         host='0.0.0.0',  # Wajib untuk Render
