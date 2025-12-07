@@ -16,27 +16,17 @@ login_manager = LoginManager()
 def create_app():
     app = Flask(__name__)
 
-    # ==================== KONFIGURASI DATABASE YANG DIPERBAIKI ====================
+    # ==================== KONFIGURASI DATABASE UNTUK RENDER ====================
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-    # 🚀 KONFIGURASI DATABASE FINAL UNTUK RENDER
-    # Render punya Environment Variable: RENDER=true
-    if os.environ.get('RENDER'):
-        # DI RENDER: Selalu pakai SQLite di instance/app.db
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
-        print("🚀 RENDER ENVIRONMENT: Using SQLite database at instance/app.db")
-    else:
-        # DI DEVELOPMENT (lokal): Cek DATABASE_URL
-        database_url = os.environ.get('DATABASE_URL')
-        if database_url:
-            if database_url.startswith("postgres://"):
-                database_url = database_url.replace("postgres://", "postgresql://", 1)
-            app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-            print(f"Development: Using PostgreSQL from DATABASE_URL")
-        else:
-            app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
-            print(f"Development: Using SQLite database at instance/app.db")
+    # Konfigurasi database untuk Render
+    database_url = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
 
+    # Fix untuk Render: postgres:// -> postgresql://
+    if database_url and database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     # ==========================================================================
 
@@ -95,12 +85,11 @@ def init_database(app):
             # Fallback ke SQLite jika PostgreSQL error
             try:
                 print("Trying SQLite fallback...")
-                # PASTIKAN FALLBACK KE PATH YANG BENAR
-                app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
+                app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
                 db.create_all()
                 create_default_admin()
                 create_default_accounts_if_needed()
-                print("Fallback to SQLite database successful at instance/app.db")
+                print("Fallback to SQLite database successful")
             except Exception as e2:
                 print(f"Fallback also failed: {e2}")
 
